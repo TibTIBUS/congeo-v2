@@ -105,9 +105,17 @@ function Planning({ data, actions, fictif }) {
 
 function DayEditor({ data, actions, edit, onClose }) {
   const [d, setD] = useState(edit.day);
+  const [err, setErr] = useState("");
   const emp = data.employees.find((e) => e.id === edit.empId);
   const set = (k, v) => setD({ ...d, [k]: v });
-  const save = async () => { await actions.saveOverride(edit.empId, edit.iso, d); onClose(); };
+  const save = async () => {
+    // Ne jamais prétendre une sauvegarde réussie : validation claire AVANT
+    // l'appel (la V1 refuse un jour travaillé sans horaires), affichage de
+    // l'erreur serveur sinon, saisie conservée dans les deux cas.
+    if (d.worked && (!d.start || !d.end)) { setErr("Indique une heure de début et une heure de fin (ou décoche « Travaillé »)."); return; }
+    try { await actions.saveOverride(edit.empId, edit.iso, d); onClose(); }
+    catch (e) { setErr(e.message || "Enregistrement impossible, réessaie."); }
+  };
   const reset = async () => { await actions.resetOverride(edit.empId, edit.iso); onClose(); };
   return <div className="card" style={{ padding: 14, marginTop: 12, borderColor: "var(--pri)" }}>
     <b>{emp.name} · {edit.iso}</b>
@@ -122,6 +130,7 @@ function DayEditor({ data, actions, edit, onClose }) {
       <button className="btn ghost" onClick={reset}>Revenir au gabarit</button>
       <button className="btn ghost" onClick={onClose}>Annuler</button>
     </div>
+    {err && <div role="alert" style={{ color: "var(--no)", fontSize: 12.5, marginTop: 8 }}>{err}</div>}
   </div>;
 }
 
