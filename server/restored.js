@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import {workdays,blockedReason,today,validDate,defaultBlocks} from '../src/domain/calendarRules.js';
 import {recoveryPlannedMinutes} from '../src/domain/requests.js';
+import {defaultWorkTemplates,STAFF_COLORS} from '../src/domain/defaults.js';
 export const id=()=>randomUUID();
 const details=r=>r.details||{};
 export const dates=r=>r.type==='recovery'?[...new Set(r.dates||[])]:workdays(r.dateStart,r.dateEnd);
@@ -20,16 +21,23 @@ export function changePlanning(db,p){
  const admin=p.admin===true,actor=String(p.employee||''),a=p.action;
  const requireAdmin=()=>{if(!admin)throw Error('Cette action est réservée à la gérante.');};
  if(!admin&&!db.employees.some(e=>e.id===actor&&e.active!==false))throw Error('Sélectionnez un salarié actif.');
- if(a==='employee'){requireAdmin();const name=String(p.name||'').trim();if(!name||name.length>80)throw Error('Indiquez un nom de 1 à 80 caractères.');const employee={id:id(),name,color:'#377d7a',role:'',active:true,email:'',notify:false};db.employees.push(employee);db.templates[employee.id]={paire:Array.from({length:7},()=>({worked:false})),impaire:Array.from({length:7},()=>({worked:false}))};return;}
+ if(a==='employee'){requireAdmin();const name=String(p.name||'').trim();if(!name||name.length>80)throw Error('Indiquez un nom de 1 à 80 caractères.');const color=STAFF_COLORS.find(color=>!db.employees.some(e=>e.color===color))||STAFF_COLORS[db.employees.length%STAFF_COLORS.length];const employee={id:id(),name,color,role:'',active:true,email:'',notify:false};db.employees.push(employee);db.templates[employee.id]=defaultWorkTemplates();return;}
  if(a==='archive'){requireAdmin();const e=db.employees.find(e=>e.id===p.id);if(!e)throw Error('Salarié introuvable.');e.active=!!p.active;return;}
  if(a==='profile'){const e=db.employees.find(e=>e.id===actor);const email=String(p.email||'').trim();if((email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))||(p.notify&&!email))throw Error('Vérifiez votre adresse e-mail.');e.email=email;e.notify=!!p.notify;return;}
  if(a==='settings'){requireAdmin();if(!Array.isArray(p.blocks)||p.blocks.length>50)throw Error('Périodes incorrectes.');db.blocks=p.blocks.map(b=>{if(!validDate(b.start)||!validDate(b.end)||b.end<b.start||!String(b.label||'').trim())throw Error('Vérifiez les dates et le nom de chaque période.');return {...b,id:id(),label:String(b.label).slice(0,120)};});db.settings.firstWeek=p.firstWeek?'true':'false';db.settings.blocksConfigured='true';return;}
  if(a==='request'){const emp=admin?String(p.target):actor;if(!db.employees.some(e=>e.id===emp&&e.active!==false))throw Error('Sélectionnez un salarié actif.');checkDates(db,p.start,p.end);const r={id:id(),employeeId:emp,type:p.leaveType||'leave',status:'pending',createdAt:new Date().toISOString(),details:{note:String(p.note||'').slice(0,1500),override:admin&&p.override===true?1:0}};absence(r,p.start,p.end,r.type);checkCapacity(db,r);db.requests.push(r);return;}
  if(a==='sendMail'){requireAdmin();return;}
+ if(a==='hoursSetBalance'){
+  requireAdmin();const employee=String(p.target||'');if(!db.employees.some(e=>e.id===employee))throw Error('Salarié introuvable.');
+  const current=balance(db,employee),minutes=Number(p.minutes);
+  if(!Number.isInteger(minutes)||minutes<0||minutes>60000)throw Error('Indiquez un solde positif ou nul, en heures et minutes.');
+  if(p.originalBalance!==current)throw Error('Le solde a changé depuis son affichage. Rechargez cette ligne avant de l’enregistrer.');
+  const delta=minutes-current;if(delta)db.recoveryLedger.push({id:id(),employeeId:employee,deltaMin:delta,reason:'Correction du solde de récupération',at:new Date().toISOString()});return;
+ }
  if(['hoursAdd','hoursEdit','hoursDelete'].includes(a)){
   requireAdmin();const employee=String(p.target||'');if(!db.employees.some(e=>e.id===employee))throw Error('Salarié introuvable.');
   const l=db.recoveryLedger.find(l=>String(l.id)===String(p.id));
-  if(a!=='hoursAdd'&&(!l||l.employeeId!==employee||l.requestId||l.deltaMin<=0||/recréditée/.test(l.reason)))throw Error('Seules les heures supplémentaires saisies manuellement peuvent être corrigées.');
+  if(a!=='hoursAdd'&&(!l||l.employeeId!==employee||l.requestId||l.deltaMin<=0||/recréditée|Correction du solde/.test(l.reason)))throw Error('Seules les heures supplémentaires saisies manuellement peuvent être corrigées.');
   if(l&&p.originalMinutes!==l.deltaMin)throw Error('Cette saisie a changé. Actualisez la page.');
   const value=a==='hoursDelete'?0:Math.round(Number(p.minutes));if(a!=='hoursDelete'&&(!Number.isFinite(value)||value<=0||value>60000))throw Error('Indiquez une durée positive, en heures et minutes.');
   if(balance(db,employee)-(l?.deltaMin||0)+value<0)throw Error('Ces heures ont déjà été utilisées. La correction rendrait le solde négatif.');

@@ -18,9 +18,9 @@ export function PariteBadge({ parite, week }) {
 }
 export function WeekNav({ onPrev, onNext, children }) {
   return <div className="weeknav">
-    <button className="arrow" onClick={onPrev}>‹</button>
+    <button className="arrow" aria-label="Semaine précédente" onClick={onPrev}>‹</button>
     <div style={{ textAlign: "center", flex: 1 }}>{children}</div>
-    <button className="arrow" onClick={onNext}>›</button>
+    <button className="arrow" aria-label="Semaine suivante" onClick={onNext}>›</button>
   </div>;
 }
 export function Hm({ min, strong }) {

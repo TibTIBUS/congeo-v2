@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { isoWeek, weekDates, parityOf, fmtRange, toISODate, addDays, mondayOfISOWeek, DAY_NAMES, isoWeeksInYear, parseISO, fmtDate } from "../domain/dates.js";
 
 const fmtDateFr = (iso) => fmtDate(parseISO(iso));
-import { STORE_HOURS_LABEL, effectiveWeekPlan, getWeekPlan, plannedMinutes, weekCoverage, fmtHours, SHOP_DAYS } from "../domain/planning.js";
+import { STORE_HOURS_LABEL, effectiveWeekPlan, getWeekPlan, plannedMinutes, dayCoverage, MIN_COVERAGE, weekCoverage, fmtHours, SHOP_DAYS } from "../domain/planning.js";
 import { recoveryBalance } from "../store.js";
 import { checkRecoveryValidation, requestDates, recoveryPlannedMinutes } from "../domain/requests.js";
 import { buildMatrix, buildXlsx } from "../domain/exportXlsx.js";
@@ -28,66 +28,25 @@ export default function AdminView({ data, actions, fictif = false }) {
   </div>;
 }
 
-export function Planning({ data, actions, fictif }) {
-  const [wk, setWk] = useState(() => isoWeek(new Date()));
-  const [edit, setEdit] = useState(null); // {empId, iso, day}
-  const [recForm, setRecForm] = useState(false);
-  const [recEmp, setRecEmp] = useState(data.employees[0].id);
-  const [recH, setRecH] = useState(""); const [recWhy, setRecWhy] = useState("");
-  const dates = weekDates(wk.year, wk.week);
-  const plansBy = {};
-  data.employees.forEach((e) => { plansBy[e.id] = effectiveWeekPlan(data, e.id, wk.year, wk.week); });
-  const cov = weekCoverage(plansBy);
-  const leaveSet = {}; data.employees.forEach((e) => { leaveSet[e.id] = new Set(); });
-  data.requests.filter((r) => r.type === "leave" && r.status === "approved")
-    .forEach((r) => requestDates(r).forEach((x) => leaveSet[r.employeeId]?.add(x)));
-  const recDays = {}; data.employees.forEach((e) => { recDays[e.id] = new Set(); });
-  data.requests.filter((r) => r.type === "recovery" && r.status === "approved")
-    .forEach((r) => r.dates.forEach((x) => recDays[r.employeeId]?.add(x)));
-  const move = (n) => setWk(isoWeek(addDays(mondayOfISOWeek(wk.year, wk.week), n * 7)));
-  const saveRec = async () => {
-    const h = parseFloat(recH.replace(",", "."));
-    if (!h || h <= 0) return;
-    await actions.addRecovery(recEmp, h, recWhy);
-    setRecForm(false); setRecH(""); setRecWhy("");
-  };
-  return <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-      <div>
-        <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>PLANNING · LA HAYE{fictif ? " (FICTIF)" : ""}</div>
-        <h1>Semaine {parityOf(wk)} · {fmtRange(dates[0])}</h1>
-      </div>
-      <WeekNav onPrev={() => move(-1)} onNext={() => move(1)}><PariteBadge parite={parityOf(wk)} week={wk.week} /></WeekNav>
-    </div>
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
-      <span className="chip">{data.employees.length} <span className="mut">salariés</span></span>
-      <span className="chip"><span className="badgeO">O</span> {cov.openingsCovered}/{cov.days} <span className="mut">ouvertures couvertes</span></span>
-      <span className="chip"><span className="badgeF">F</span> {cov.closingsCovered}/{cov.days} <span className="mut">fermetures couvertes</span></span>
-      {cov.warnings.map((w, i) => <span key={i} className="chip warn">⚠ {DAY_NAMES[w.dayIdx]} : {w.count === 0 ? "aucune" : "1 seule"} {w.kind === "O" ? "ouverture" : "fermeture"}</span>)}
-    </div>
-    <div className="card" style={{ overflow: "auto" }}>
-      <table className="grid">
-        <thead><tr><th>SALARIÉ</th>{SHOP_DAYS.map((i) => <th key={i}>{DAY_NAMES[i]} {dates[i].getDate()}</th>)}</tr></thead>
-        <tbody>
-          {data.employees.map((e) => <tr key={e.id}>
-            <td><span className="dot" style={{ background: e.color }} /> <b>{e.name}</b><div className="mut" style={{ fontSize: 11 }}>{e.role}</div></td>
-            {SHOP_DAYS.map((i) => {
-              const p = plansBy[e.id][i], iso = toISODate(dates[i]);
-              const onLeave = leaveSet[e.id].has(iso), onRec = recDays[e.id].has(iso);
-              return <td key={i} className={`cellwork ${onLeave || onRec ? "conge" : ""}`} onClick={() => setEdit({ empId: e.id, iso, day: { ...p } })}>
-                {onLeave ? "Congé" : onRec ? "Récupération" : p.worked ? <>{fmtRanges(p)}<Badges d={p} /></> : <span className="mut">Repos</span>}
-              </td>;
-            })}
-          </tr>)}
-        </tbody>
-      </table>
-    </div>
-    <div className="mut" style={{ fontSize: 12, marginTop: 8 }}>
-      Magasin : {STORE_HOURS_LABEL} · <span className="badgeO">O</span> ouvre le magasin · <span className="badgeF">F</span> ferme le magasin (coches indicatives, sans contrôle à la minute) · Couverture : au moins 2 salariés à l'ouverture et 2 à la fermeture, alerte sans blocage · Dimanche : magasin fermé · Clique une case pour ajuster la journée.
-    </div>
-
-    {edit && <DayEditor data={data} actions={actions} edit={edit} onClose={() => setEdit(null)} />}
-  </div>;
+export function Planning({data,actions}){
+ const [wk,setWk]=useState(()=>isoWeek(new Date())),[edit,setEdit]=useState(null);
+ const dates=weekDates(wk.year,wk.week),plansBy={},scheduledBy={};
+ for(const e of data.employees){plansBy[e.id]=effectiveWeekPlan(data,e.id,wk.year,wk.week);scheduledBy[e.id]=getWeekPlan(data.templates,data.overrides,e.id,wk.year,wk.week);}
+ const cov=weekCoverage(plansBy),warningDays=new Set(cov.warnings.map(w=>w.dayIdx));
+ const move=n=>setWk(isoWeek(addDays(mondayOfISOWeek(wk.year,wk.week),n*7)));
+ const absence=(emp,day)=>data.requests.find(r=>r.employeeId===emp&&r.status==='approved'&&requestDates(r).includes(day));
+ return <div className="team-planning"><div className="team-week-heading"><div><h2>{fmtRange(dates[0])}</h2><p className="muted">Semaine {wk.week} · {parityOf(wk)}</p></div><WeekNav onPrev={()=>move(-1)} onNext={()=>move(1)}><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Cette semaine</button></WeekNav></div>
+ <div className="coverage-summary"><span>{data.employees.length} salariés</span><span>Ouvertures couvertes : <strong>{cov.openingsCovered}/{cov.days}</strong></span><span>Fermetures couvertes : <strong>{cov.closingsCovered}/{cov.days}</strong></span></div>
+ {warningDays.size>0?<div className="coverage-notice" role="status"><strong>⚠ {warningDays.size} journée{warningDays.size>1?'s':''} à compléter</strong><span>Les alertes figurent sous chaque jour. Prévoyez au moins {MIN_COVERAGE} personnes à l’ouverture et {MIN_COVERAGE} à la fermeture.</span></div>:<div className="coverage-notice complete" role="status">Toutes les ouvertures et fermetures sont couvertes cette semaine.</div>}
+ <div className="team-grid-wrap"><table className="team-grid"><colgroup><col className="employee-col"/>{SHOP_DAYS.map(i=><col key={i}/>)}</colgroup><thead><tr><th scope="col" className="team-employee-head">Salarié</th>{SHOP_DAYS.map(i=>{const c=dayCoverage(plansBy,i);return <th scope="col" key={i} className={warningDays.has(i)?'day-needs-coverage':''}><span className="team-day-heading">{dates[i].toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'short'})}</span><CoverageStatus label="Ouverture" count={c.openings}/><CoverageStatus label="Fermeture" count={c.closings}/></th>;})}</tr></thead>
+ <tbody>{data.employees.map(e=><tr key={e.id} style={{'--employee-color':e.color}}><th scope="row" className="team-person"><span className="employee-color-dot" style={{background:e.color}}/><span>{e.name}{e.role&&<small>{e.role}</small>}</span></th>{SHOP_DAYS.map(i=>{const day=toISODate(dates[i]),p=plansBy[e.id][i],a=absence(e.id,day);return <td key={day} className={a?'conge':''}><button type="button" className="team-shift" aria-label={e.name+' · '+dates[i].toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' · '+(a?(a.type==='recovery'?'Récupération':'Congé'):p.worked?fmtRanges(p):'Repos')+' · Modifier la journée'} onClick={()=>setEdit({empId:e.id,iso:day,day:{...scheduledBy[e.id][i]}})}>{a?<span className="absence-label">{a.type==='recovery'?'Récupération':'Congé'}</span>:p.worked?<><span className="team-shift-times">{fmtRanges(p).split(' / ').map(t=><span key={t}>{t}</span>)}</span><Badges d={p}/></>:<span className="muted">Repos</span>}</button></td>;})}</tr>)}</tbody></table></div>
+ <p className="team-planning-help">Cliquez sur une journée pour modifier ses horaires et désigner les personnes d’ouverture ou de fermeture. Les salariés en congé ou en récupération ne sont pas comptés dans la couverture. Dimanche fermé.</p>
+ {edit&&<DayEditor key={edit.empId+edit.iso} data={data} actions={actions} edit={edit} onClose={()=>setEdit(null)}/>}
+ </div>;
+}
+function CoverageStatus({label,count}){
+ const missing=Math.max(0,MIN_COVERAGE-count);
+ return <span className={'coverage-status '+(missing?(count?'short':'empty'):'covered')}><span>{missing?'⚠':'✓'} {label} : <b>{count} / {MIN_COVERAGE}</b></span>{missing>0&&<small>{missing} personne{missing>1?'s':''} à désigner</small>}</span>;
 }
 
 function DayEditor({ data, actions, edit, onClose }) {

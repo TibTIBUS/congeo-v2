@@ -5877,6 +5877,15 @@ var today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", y
 
 // server/restored.js
 import { randomUUID } from "node:crypto";
+
+// src/domain/defaults.js
+var STAFF_COLORS = ["#166534", "#9d174d", "#6d28d9", "#b45309", "#0f766e", "#be123c", "#3f6212", "#9a3412", "#475569", "#854d0e", "#7e22ce", "#115e59"];
+function defaultWorkTemplates() {
+  const week = () => Array.from({ length: 7 }, (_, weekday) => weekday < 6 ? { worked: true, start: "09:30", end: "19:00", pauseStart: "12:00", pauseEnd: "14:00", open: false, close: false } : { worked: false, start: null, end: null, pauseStart: null, pauseEnd: null, open: false, close: false });
+  return { paire: week(), impaire: week() };
+}
+
+// server/restored.js
 var id = () => randomUUID();
 var details = (r) => r.details || {};
 var dates = (r) => r.type === "recovery" ? [...new Set(r.dates || [])] : workdays(r.dateStart, r.dateEnd);
@@ -5962,9 +5971,10 @@ function changePlanning(db, p) {
     requireAdmin();
     const name = String(p.name || "").trim();
     if (!name || name.length > 80) throw Error("Indiquez un nom de 1 \xE0 80 caract\xE8res.");
-    const employee = { id: id(), name, color: "#377d7a", role: "", active: true, email: "", notify: false };
+    const color = STAFF_COLORS.find((color2) => !db.employees.some((e) => e.color === color2)) || STAFF_COLORS[db.employees.length % STAFF_COLORS.length];
+    const employee = { id: id(), name, color, role: "", active: true, email: "", notify: false };
     db.employees.push(employee);
-    db.templates[employee.id] = { paire: Array.from({ length: 7 }, () => ({ worked: false })), impaire: Array.from({ length: 7 }, () => ({ worked: false })) };
+    db.templates[employee.id] = defaultWorkTemplates();
     return;
   }
   if (a === "archive") {
@@ -6007,12 +6017,23 @@ function changePlanning(db, p) {
     requireAdmin();
     return;
   }
+  if (a === "hoursSetBalance") {
+    requireAdmin();
+    const employee = String(p.target || "");
+    if (!db.employees.some((e) => e.id === employee)) throw Error("Salari\xE9 introuvable.");
+    const current = balance(db, employee), minutes = Number(p.minutes);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 6e4) throw Error("Indiquez un solde positif ou nul, en heures et minutes.");
+    if (p.originalBalance !== current) throw Error("Le solde a chang\xE9 depuis son affichage. Rechargez cette ligne avant de l\u2019enregistrer.");
+    const delta = minutes - current;
+    if (delta) db.recoveryLedger.push({ id: id(), employeeId: employee, deltaMin: delta, reason: "Correction du solde de r\xE9cup\xE9ration", at: (/* @__PURE__ */ new Date()).toISOString() });
+    return;
+  }
   if (["hoursAdd", "hoursEdit", "hoursDelete"].includes(a)) {
     requireAdmin();
     const employee = String(p.target || "");
     if (!db.employees.some((e) => e.id === employee)) throw Error("Salari\xE9 introuvable.");
     const l = db.recoveryLedger.find((l2) => String(l2.id) === String(p.id));
-    if (a !== "hoursAdd" && (!l || l.employeeId !== employee || l.requestId || l.deltaMin <= 0 || /recréditée/.test(l.reason))) throw Error("Seules les heures suppl\xE9mentaires saisies manuellement peuvent \xEAtre corrig\xE9es.");
+    if (a !== "hoursAdd" && (!l || l.employeeId !== employee || l.requestId || l.deltaMin <= 0 || /recréditée|Correction du solde/.test(l.reason))) throw Error("Seules les heures suppl\xE9mentaires saisies manuellement peuvent \xEAtre corrig\xE9es.");
     if (l && p.originalMinutes !== l.deltaMin) throw Error("Cette saisie a chang\xE9. Actualisez la page.");
     const value = a === "hoursDelete" ? 0 : Math.round(Number(p.minutes));
     if (a !== "hoursDelete" && (!Number.isFinite(value) || value <= 0 || value > 6e4)) throw Error("Indiquez une dur\xE9e positive, en heures et minutes.");
