@@ -5849,13 +5849,13 @@ var parse = (s) => /* @__PURE__ */ new Date(s + "T12:00:00Z");
 function validDate(s) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parse(s).getTime()) && iso2(parse(s)) === s;
 }
-function workdays(start, end) {
+function workdays(start, end, openSundays = []) {
   if (!validDate(start) || !validDate(end) || end < start) throw new Error("Choisissez une p\xE9riode valide.");
   const days = [];
   const d = parse(start);
   for (let i = 0; iso2(d) <= end; i++) {
     if (i >= 370) throw new Error("La p\xE9riode ne peut pas d\xE9passer un an.");
-    if (d.getUTCDay() !== 0) days.push(iso2(d));
+    if (d.getUTCDay() !== 0 || openSundays.includes(iso2(d))) days.push(iso2(d));
     d.setUTCDate(d.getUTCDate() + 1);
   }
   if (!days.length) throw new Error("Le dimanche est un jour de fermeture.");
@@ -5868,8 +5868,8 @@ function weekNumber(s) {
   return Math.ceil(((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
 }
 var defaultBlocks = [{ id: "noel-2026", label: "Vacances de No\xEBl \xB7 zone B", start: "2026-12-19", end: "2027-01-03" }];
-function blockedReason(day, blocks, firstWeek) {
-  if (parse(day).getUTCDay() === 0) return "Dimanche \xB7 magasin ferm\xE9";
+function blockedReason(day, blocks, firstWeek, openSundays = []) {
+  if (parse(day).getUTCDay() === 0 && !openSundays.includes(day)) return "Dimanche \xB7 magasin ferm\xE9";
   if (firstWeek && weekNumber(day) === 1) return "Semaine n\xB0 1";
   return blocks.find((b) => b.start <= day && b.end >= day)?.label || "";
 }
@@ -5885,18 +5885,33 @@ function defaultWorkTemplates() {
   return { paire: week(), impaire: week() };
 }
 
+// src/domain/sundays.js
+var isSunday = (date) => validDate(date) && (/* @__PURE__ */ new Date(date + "T12:00:00Z")).getUTCDay() === 0;
+function getOpenSundays(data) {
+  let dates2 = data?.openSundays;
+  if (!Array.isArray(dates2)) try {
+    dates2 = JSON.parse(data?.settings?.sundayOpenings || "[]");
+  } catch {
+    dates2 = [];
+  }
+  return Array.isArray(dates2) ? [...new Set(dates2.filter(isSunday))].sort() : [];
+}
+function sundaySnapshot(data, date) {
+  return { open: getOpenSundays(data).includes(date), employees: data.employees.filter((e) => e.active !== false).map((e) => e.id).sort(), plans: Object.fromEntries(Object.entries(data.overrides || {}).filter(([key]) => key.endsWith("|" + date)).sort(([a], [b]) => a.localeCompare(b))) };
+}
+
 // server/restored.js
 var id = () => randomUUID();
 var details = (r) => r.details || {};
-var dates = (r) => r.type === "recovery" ? [...new Set(r.dates || [])] : workdays(r.dateStart, r.dateEnd);
+var dates = (r, openSundays = []) => r.type === "recovery" ? [...new Set(r.dates || [])] : r.dateStart === r.dateEnd && validDate(r.dateStart) && (/* @__PURE__ */ new Date(r.dateStart + "T12:00:00Z")).getUTCDay() === 0 && !openSundays.includes(r.dateStart) ? [] : workdays(r.dateStart, r.dateEnd, openSundays);
 var balance = (db, emp) => db.recoveryLedger.filter((l) => l.employeeId === emp).reduce((s, l) => s + Number(l.deltaMin), 0);
-function toV1(r) {
-  const ds = dates(r);
+function toV1(r, openSundays = []) {
+  const ds = dates(r, openSundays);
   return { id: r.id, employee_id: r.employeeId, leave_type: r.type, start: r.dateStart || ds[0], end: r.dateEnd || ds.at(-1), days: JSON.stringify(ds), status: r.status === "rejected" ? "refused" : r.status, created: r.createdAt, ...details(r) };
 }
 function planningData(db, admin, actor) {
-  return { employees: db.employees.map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color, active: e.active === false ? 0 : 1 })), requests: db.requests.map((r) => {
-    const x = toV1(r);
+  return { openSundays: getOpenSundays(db), employees: db.employees.map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color, active: e.active === false ? 0 : 1 })), requests: db.requests.map((r) => {
+    const x = toV1(r, getOpenSundays(db));
     if (!admin && actor !== r.employeeId) {
       delete x.note;
       delete x.answer;
@@ -5912,17 +5927,17 @@ function queued(db, r, body) {
   }
 }
 function checkDates(db, start, end, allowPast = false) {
-  const days = workdays(start, end);
+  const days = workdays(start, end, getOpenSundays(db));
   if (!allowPast && start < today()) throw Error("Choisissez une date \xE0 partir d\u2019aujourd\u2019hui.");
   const blocks = db.settings?.blocksConfigured === "true" || db.blocks?.length ? db.blocks : defaultBlocks;
-  const bad = days.find((d) => blockedReason(d, blocks, db.settings?.firstWeek !== "false"));
-  if (bad) throw Error(`${bad} : ${blockedReason(bad, blocks, db.settings?.firstWeek !== "false")}. Choisissez une autre p\xE9riode.`);
+  const bad = days.find((d) => blockedReason(d, blocks, db.settings?.firstWeek !== "false", getOpenSundays(db)));
+  if (bad) throw Error(`${bad} : ${blockedReason(bad, blocks, db.settings?.firstWeek !== "false", getOpenSundays(db))}. Choisissez une autre p\xE9riode.`);
   return days;
 }
 function checkCapacity(db, r) {
-  const ds = dates(r);
+  const ds = dates(r, getOpenSundays(db));
   for (const day of ds) {
-    const others = db.requests.filter((q) => q.id !== r.id && q.status === "approved" && dates(q).includes(day));
+    const others = db.requests.filter((q) => q.id !== r.id && q.status === "approved" && dates(q, getOpenSundays(db)).includes(day));
     if (others.some((q) => q.employeeId === r.employeeId)) throw Error("Ce salari\xE9 a d\xE9j\xE0 une absence valid\xE9e sur cette p\xE9riode.");
     if (others.length >= (details(r).override ? 2 : 1)) throw Error(details(r).override ? "Deux personnes sont d\xE9j\xE0 absentes sur cette p\xE9riode." : "Une personne est d\xE9j\xE0 absente sur cette p\xE9riode. Une d\xE9rogation est n\xE9cessaire.");
   }
@@ -5941,11 +5956,11 @@ function refund(db, r) {
     r.deductedMin = 0;
   }
 }
-function absence(r, start, end, type) {
+function absence(r, start, end, type, openSundays = []) {
   r.type = type || r.type;
   if (!["leave", "recovery"].includes(r.type)) throw Error("Type d\u2019absence invalide.");
   if (r.type === "recovery") {
-    r.dates = workdays(start, end);
+    r.dates = workdays(start, end, openSundays);
     delete r.dateStart;
     delete r.dateEnd;
   } else {
@@ -6008,7 +6023,7 @@ function changePlanning(db, p) {
     if (!db.employees.some((e) => e.id === emp && e.active !== false)) throw Error("S\xE9lectionnez un salari\xE9 actif.");
     checkDates(db, p.start, p.end);
     const r2 = { id: id(), employeeId: emp, type: p.leaveType || "leave", status: "pending", createdAt: (/* @__PURE__ */ new Date()).toISOString(), details: { note: String(p.note || "").slice(0, 1500), override: admin && p.override === true ? 1 : 0 } };
-    absence(r2, p.start, p.end, r2.type);
+    absence(r2, p.start, p.end, r2.type, getOpenSundays(db));
     checkCapacity(db, r2);
     db.requests.push(r2);
     return;
@@ -6056,7 +6071,7 @@ function changePlanning(db, p) {
     if (a === "editApproved") {
       checkDates(db, p.start, p.end, true);
       refund(db, r);
-      absence(r, p.start, p.end, p.leaveType);
+      absence(r, p.start, p.end, p.leaveType, getOpenSundays(db));
       r.details = { ...r.details, override: p.override ? 1 : 0, answer: String(p.answer || "").slice(0, 1500), cancel_requested: 0 };
       checkCapacity(db, r);
       deduct(db, r);
@@ -6071,7 +6086,7 @@ function changePlanning(db, p) {
     requireAdmin();
     if (r.status === "approved") return;
     if (r.status !== "pending") throw Error("Cette demande a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
-    const x = toV1(r);
+    const x = toV1(r, getOpenSundays(db));
     checkDates(db, x.start, x.end);
     r.details.override = p.override ? 1 : 0;
     checkCapacity(db, r);
@@ -6088,7 +6103,7 @@ function changePlanning(db, p) {
     if (!["pending", "proposed"].includes(r.status)) throw Error("Cette demande a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
     checkDates(db, p.start, p.end);
     const q = structuredClone(r);
-    absence(q, p.start, p.end);
+    absence(q, p.start, p.end, void 0, getOpenSundays(db));
     q.details.override = 0;
     checkCapacity(db, q);
     r.status = "proposed";
@@ -6098,7 +6113,7 @@ function changePlanning(db, p) {
   } else if (a === "acceptProposal") {
     if (admin || r.status !== "proposed") throw Error("Le salari\xE9 doit accepter une proposition en cours.");
     checkDates(db, r.details.proposed_start, r.details.proposed_end);
-    absence(r, r.details.proposed_start, r.details.proposed_end);
+    absence(r, r.details.proposed_start, r.details.proposed_end, void 0, getOpenSundays(db));
     r.details.override = 0;
     checkCapacity(db, r);
     deduct(db, r);
@@ -6196,6 +6211,38 @@ function leaveBlockedReason(dayISO, blocks = [], firstWeek = true) {
   return b ? b.label : null;
 }
 
+// server/sundays.js
+function applySundayOpening(db, payload, cleanDay2) {
+  if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+  const { date, open } = payload;
+  if (!isSunday(date) || typeof open !== "boolean") throw Error("Choisissez la date d\u2019un dimanche.");
+  const snapshot = sundaySnapshot(db, date);
+  if (JSON.stringify(payload.original) !== JSON.stringify(snapshot)) throw Error("Ce dimanche a chang\xE9. Rechargez les horaires enregistr\xE9s avant de continuer.");
+  if (!snapshot.open && open && date < today()) throw Error("Choisissez un dimanche \xE0 partir d\u2019aujourd\u2019hui.");
+  const recoveries = db.requests.filter((r) => r.status === "approved" && r.type === "recovery" && requestDates(r).includes(date));
+  if (!open) {
+    if (recoveries.length) throw Error("Une r\xE9cup\xE9ration est valid\xE9e ce dimanche. Corrigez ou annulez cette r\xE9cup\xE9ration avant de fermer la journ\xE9e.");
+    for (const key of Object.keys(db.overrides)) if (key.endsWith("|" + date)) delete db.overrides[key];
+    db.settings.sundayOpenings = JSON.stringify(getOpenSundays(db).filter((day) => day !== date));
+    return;
+  }
+  if (!Array.isArray(payload.rows) || payload.rows.length !== snapshot.employees.length) throw Error("V\xE9rifiez la liste des salari\xE9s de ce dimanche.");
+  const rows = [], seen = /* @__PURE__ */ new Set();
+  for (const row of payload.rows) {
+    if (!snapshot.employees.includes(row.employeeId) || seen.has(row.employeeId)) throw Error("V\xE9rifiez la liste des salari\xE9s de ce dimanche.");
+    seen.add(row.employeeId);
+    const day = cleanDay2(row.day);
+    if (!day) throw Error("V\xE9rifiez les horaires du matin et de l\u2019apr\xE8s-midi.");
+    if (recoveries.some((r) => r.employeeId === row.employeeId)) {
+      const previous = db.overrides[row.employeeId + "|" + date];
+      if (["worked", "start", "end", "pauseStart", "pauseEnd"].some((key) => (previous?.[key] ?? null) !== (day[key] ?? null))) throw Error("Une r\xE9cup\xE9ration est valid\xE9e pour ce salari\xE9. Corrigez-la avant de modifier ses horaires.");
+    }
+    rows.push({ employeeId: row.employeeId, day });
+  }
+  for (const row of rows) db.overrides[row.employeeId + "|" + date] = row.day;
+  db.settings.sundayOpenings = JSON.stringify([.../* @__PURE__ */ new Set([...getOpenSundays(db), date])].sort());
+}
+
 // src/domain/duties.js
 var dutyState = (day) => ({ worked: !!day?.worked, open: !!day?.open, close: !!day?.close });
 var sameDutyState = (a, b) => ["worked", "open", "close"].every((key) => a?.[key] === b?.[key]);
@@ -6245,6 +6292,7 @@ function cleanTemplate(t) {
 function bootstrapFor(db, empId) {
   return {
     employeeId: empId,
+    openSundays: getOpenSundays(db),
     employees: db.employees.filter((e) => e.id === empId),
     templates: { [empId]: db.templates[empId] },
     overrides: Object.fromEntries(Object.entries(db.overrides).filter(([k]) => k.startsWith(empId + "|"))),
@@ -6257,6 +6305,17 @@ async function handleApi(store2, method, url, body) {
   if (restored) return restored;
   const p = url.pathname;
   let m;
+  if (p === "/api/sundays" && method === "PUT") {
+    try {
+      await store2.transact((db2) => {
+        db2.settings ??= {};
+        applySundayOpening(db2, body, cleanDay);
+      });
+      return { code: 200, obj: { ok: true } };
+    } catch (e) {
+      return { code: 400, obj: { error: e.message || "Impossible d\u2019enregistrer ce dimanche." } };
+    }
+  }
   if (p === "/api/duties" && method === "PUT") {
     try {
       let updated = 0;
@@ -6274,7 +6333,7 @@ async function handleApi(store2, method, url, body) {
   }
   if (p === "/api/bootstrap" && method === "GET") {
     const empId = url.searchParams.get("employee");
-    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db } };
+    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db, openSundays: getOpenSundays(db) } };
     if (empId && db.employees.some((e) => e.id === empId)) return { code: 200, obj: bootstrapFor(db, empId) };
     return { code: 400, obj: { error: "Param\xE8tre employee=<id> ou as=admin requis" } };
   }
@@ -6309,14 +6368,22 @@ async function handleApi(store2, method, url, body) {
     if (!db.employees.some((e) => e.id === empId)) return { code: 404, obj: { error: "Salari\xE9 introuvable" } };
     if (!validDate(day)) return { code: 400, obj: { error: "Date invalide" } };
     if (method === "PUT") {
-      if (body?.worked && parseISO(day).getDay() === 0) return { code: 400, obj: { error: "Le dimanche est un jour de fermeture." } };
       const d2 = cleanDay(body);
       if (!d2) return { code: 400, obj: { error: "Journ\xE9e invalide" } };
-      await store2.putOverride(empId, day, d2);
+      try {
+        await store2.transact((current) => {
+          if (d2.worked && parseISO(day).getDay() === 0 && !getOpenSundays(current).includes(day)) throw Error("Ce dimanche est ferm\xE9. Activez d\u2019abord son ouverture exceptionnelle.");
+          current.overrides[empId + "|" + day] = d2;
+        });
+      } catch (e) {
+        return { code: 400, obj: { error: e.message } };
+      }
       return { code: 200, obj: { day: d2 } };
     }
     if (method === "DELETE") {
-      await store2.deleteOverride(empId, day);
+      await store2.transact((current) => {
+        delete current.overrides[empId + "|" + day];
+      });
       return { code: 200, obj: { ok: true } };
     }
   }

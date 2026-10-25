@@ -51,17 +51,17 @@ export function dayCoverage(plansByEmployee, dayIdx) {
   return { openings: o, closings: f, coveredO: o >= MIN_COVERAGE, coveredF: f >= MIN_COVERAGE };
 }
 // Bandeau semaine : "x/6 ouvertures couvertes", alerte par jour sous le seuil.
-export function weekCoverage(plansByEmployee) {
+export function weekCoverage(plansByEmployee,days=SHOP_DAYS) {
   let covO = 0, covF = 0;
   const warnings = [];
-  for (const idx of SHOP_DAYS) {
+  for (const idx of days) {
     const c = dayCoverage(plansByEmployee, idx);
     if (c.coveredO) covO++;
     if (c.coveredF) covF++;
     if (c.openings < MIN_COVERAGE) warnings.push({ dayIdx: idx, kind: "O", count: c.openings });
     if (c.closings < MIN_COVERAGE) warnings.push({ dayIdx: idx, kind: "F", count: c.closings });
   }
-  return { openingsCovered: covO, closingsCovered: covF, days: SHOP_DAYS.length, warnings };
+  return { openingsCovered: covO, closingsCovered: covF, days: days.length, warnings };
 }
 
 // Presence reflects approved absences, while templates remain unchanged.

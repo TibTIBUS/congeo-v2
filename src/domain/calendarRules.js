@@ -4,13 +4,13 @@ const parse = (s) => /* @__PURE__ */ new Date(s + "T12:00:00Z");
 function validDate(s) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parse(s).getTime()) && iso(parse(s)) === s;
 }
-function workdays(start, end) {
+function workdays(start, end, openSundays = []) {
   if (!validDate(start) || !validDate(end) || end < start) throw new Error("Choisissez une p\xE9riode valide.");
   const days = [];
   const d = parse(start);
   for (let i = 0; iso(d) <= end; i++) {
     if (i >= 370) throw new Error("La p\xE9riode ne peut pas d\xE9passer un an.");
-    if (d.getUTCDay() !== 0) days.push(iso(d));
+    if (d.getUTCDay() !== 0 || openSundays.includes(iso(d))) days.push(iso(d));
     d.setUTCDate(d.getUTCDate() + 1);
   }
   if (!days.length) throw new Error("Le dimanche est un jour de fermeture.");
@@ -22,16 +22,17 @@ function weekNumber(s) {
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   return Math.ceil(((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
 }
-function weekPeriod(s) {
+function weekPeriod(s, openSundays = []) {
   const d = parse(s);
   d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7);
   const start = iso(d);
-  d.setUTCDate(d.getUTCDate() + 5);
+  d.setUTCDate(d.getUTCDate() + 6);
+  if (!openSundays.includes(iso(d))) d.setUTCDate(d.getUTCDate() - 1);
   return { start, end: iso(d) };
 }
 const defaultBlocks = [{ id: "noel-2026", label: "Vacances de No\xEBl \xB7 zone B", start: "2026-12-19", end: "2027-01-03" }];
-function blockedReason(day, blocks, firstWeek) {
-  if (parse(day).getUTCDay() === 0) return "Dimanche \xB7 magasin ferm\xE9";
+function blockedReason(day, blocks, firstWeek, openSundays = []) {
+  if (parse(day).getUTCDay() === 0 && !openSundays.includes(day)) return "Dimanche \xB7 magasin ferm\xE9";
   if (firstWeek && weekNumber(day) === 1) return "Semaine n\xB0 1";
   return blocks.find((b) => b.start <= day && b.end >= day)?.label || "";
 }

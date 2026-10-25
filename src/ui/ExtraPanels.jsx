@@ -2,6 +2,8 @@ import React,{useCallback,useEffect,useState} from 'react';
 import {ChevronLeft,ChevronRight,Coffee,Timer,Utensils} from 'lucide-react';
 import OvertimeOverview from './OvertimeOverview';
 import DutyAssignments from './DutyAssignments';
+import SundayOpenings from './SundayOpenings';
+import {getOpenSundays} from '../domain/sundays';
 import {apiFetch} from '../lib/api';
 import {Planning,Gabarits,Export} from './AdminView';
 import {getWeekPlan} from '../domain/planning';
@@ -21,7 +23,7 @@ export default function ExtraPanels({tab,admin,actor,onChanged}){
  if(!data)return <div className="panel">Chargement…</div>;
  const active={...data,employees:data.employees.filter(e=>e.active!==false)};
  if(!active.employees.length)return <div className="panel">Ajoutez d’abord les salariés dans l’onglet Équipe.</div>;
- return <>{err&&<div role="alert" className="notice">{err}</div>}<div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions} onReload={refresh}/>:tab==='duties'&&admin?<DutyAssignments data={active} write={write} onReload={refresh}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div></>;
+ return <>{err&&<div role="alert" className="notice">{err}</div>}<div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions} onReload={refresh}/>:tab==='sundays'&&admin?<SundayOpenings data={active} write={write} onReload={refresh}/>:tab==='duties'&&admin?<DutyAssignments data={active} write={write} onReload={refresh}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div></>;
 }
 function MySchedule({data,actor}){
  const [wk,setWk]=useState(()=>isoWeek(new Date()));const emp=data.employees.find(e=>e.id===actor);if(!emp)return <div className="notice">Ce salarié n’est plus actif.</div>;
@@ -31,7 +33,7 @@ function MySchedule({data,actor}){
  const bal=data.recoveryLedger.filter(l=>l.employeeId===actor).reduce((s,l)=>s+l.deltaMin,0),today=toISODate(new Date());
  return <div className="personal-week-view"><div className="my-schedule-navigation"><div className="personal-week-heading"><h2 aria-live="polite">{fmtRange(weekDates(wk.year,wk.week)[0])}</h2><p>Semaine {wk.week} · {parityOf(wk)}</p></div><div className="my-schedule-week-buttons"><button className="btn secondary schedule-week-button" onClick={()=>move(-1)}><ChevronLeft size={26} aria-hidden="true"/><span>Semaine précédente</span></button><button className="btn schedule-week-button" onClick={()=>move(1)}><span>Semaine suivante</span><ChevronRight size={26} aria-hidden="true"/></button></div><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Cette semaine</button></div>
  <ol className="schedule-timeline">{plan.map((p,i)=>{
-  const day=toISODate(p.date),a=absence(day),working=i!==6&&!a&&p.worked,ranges=working?fmtRanges(p).split(' / '):[];
+  const day=toISODate(p.date),a=absence(day),working=(i!==6||getOpenSundays(data).includes(day))&&!a&&p.worked,ranges=working?fmtRanges(p).split(' / '):[];
   return <li key={day} className={'schedule-timeline-row '+(!working?'is-off ':'')+(a?'is-absence ':'')+(day===today?'is-today':'')} aria-current={day===today?'date':undefined}>
    <time className={'schedule-timeline-date '+(i===6?'is-sunday':'')} dateTime={day}><span>{p.date.toLocaleDateString('fr-FR',{weekday:'long'})}</span><strong>{p.date.getDate()}</strong><small>{p.date.toLocaleDateString('fr-FR',{month:'short'})}</small></time><span className="schedule-timeline-node" aria-hidden="true"/>
    <div className="schedule-timeline-entry">{working?<><div className="schedule-timeline-ranges">{ranges.map((range,index)=><React.Fragment key={range}>{index>0&&<span className="schedule-pause"><Utensils size={14} aria-hidden="true"/>Pause</span>}<span>{range}</span></React.Fragment>)}</div>{(p.open||p.close)&&<div className="schedule-duties">{p.open&&<span>Ouverture</span>}{p.close&&<span>Fermeture</span>}</div>}</>:<span className="schedule-day-status"><Coffee size={18} aria-hidden="true"/>{a?(a.type==='recovery'?'Récupération':'Congé'):'Repos'}</span>}</div>

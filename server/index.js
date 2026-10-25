@@ -18,6 +18,8 @@ import { getWeekPlan } from "../src/domain/planning.js";
 import { isoWeek, isoWeeksInYear, parseISO } from "../src/domain/dates.js";
 import { requestDates, leaveDates } from "../src/domain/requests.js";
 import { leaveBlockedReason } from "../src/domain/blocks.js";
+import {getOpenSundays} from '../src/domain/sundays.js';
+import {applySundayOpening} from './sundays.js';
 import { applyDutyAssignments } from "../src/domain/duties.js";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -45,6 +47,7 @@ function cleanTemplate(t) {
 function bootstrapFor(db, empId) {
   return {
     employeeId: empId,
+    openSundays:getOpenSundays(db),
     employees: db.employees.filter((e) => e.id === empId),
     templates: { [empId]: db.templates[empId] },
     overrides: Object.fromEntries(Object.entries(db.overrides).filter(([k]) => k.startsWith(empId + "|"))),
@@ -62,6 +65,10 @@ export async function handleApi(store, method, url, body) {
   const p = url.pathname;
   let m;
 
+  if(p==='/api/sundays'&&method==='PUT'){
+    try{await store.transact(db=>{db.settings??={};applySundayOpening(db,body,cleanDay);});return {code:200,obj:{ok:true}};}
+    catch(e){return {code:400,obj:{error:e.message||'Impossible d’enregistrer ce dimanche.'}};}
+  }
   if(p==='/api/duties'&&method==='PUT'){
     try{let updated=0;await store.transact(db=>{updated=applyDutyAssignments(db,body);});return {code:200,obj:{ok:true,updated}};}
     catch(e){return {code:400,obj:{error:e.message||'Impossible d’enregistrer les affectations.'}};}
@@ -76,7 +83,7 @@ export async function handleApi(store, method, url, body) {
 
   if (p === "/api/bootstrap" && method === "GET") {
     const empId = url.searchParams.get("employee");
-    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db } };
+    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db,openSundays:getOpenSundays(db) } };
     if (empId && db.employees.some((e) => e.id === empId)) return { code: 200, obj: bootstrapFor(db, empId) };
     return { code: 400, obj: { error: "Paramètre employee=<id> ou as=admin requis" } };
   }
@@ -114,14 +121,13 @@ export async function handleApi(store, method, url, body) {
     if (!db.employees.some((e) => e.id === empId)) return { code: 404, obj: { error: "Salarié introuvable" } };
     if (!validDate(day)) return { code: 400, obj: { error: "Date invalide" } };
     if (method === "PUT") {
-      if(body?.worked&&parseISO(day).getDay()===0)return {code:400,obj:{error:"Le dimanche est un jour de fermeture."}};
       const d2 = cleanDay(body);
       if (!d2) return { code: 400, obj: { error: "Journée invalide" } };
-      await store.putOverride(empId, day, d2);
+      try{await store.transact(current=>{if(d2.worked&&parseISO(day).getDay()===0&&!getOpenSundays(current).includes(day))throw Error("Ce dimanche est fermé. Activez d’abord son ouverture exceptionnelle.");current.overrides[empId+'|'+day]=d2;});}catch(e){return {code:400,obj:{error:e.message}};}
       return { code: 200, obj: { day: d2 } };
     }
     if (method === "DELETE") {
-      await store.deleteOverride(empId, day);
+      await store.transact(current=>{delete current.overrides[empId+'|'+day];});
       return { code: 200, obj: { ok: true } };
     }
   }
