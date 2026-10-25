@@ -46,7 +46,7 @@ export function Planning({data,actions}){
 }
 function CoverageStatus({label,count}){
  const missing=Math.max(0,MIN_COVERAGE-count);
- return <span className={'coverage-status '+(missing?(count?'short':'empty'):'covered')}><span>{missing?'⚠':'✓'} {label} : <b>{count} / {MIN_COVERAGE}</b></span>{missing>0&&<small>{missing} personne{missing>1?'s':''} à désigner</small>}</span>;
+ return <span className={'coverage-status '+(missing?(count?'short':'unassigned'):'covered')}><span>{missing?'⚠':'✓'} {label} : <b>{count} / {MIN_COVERAGE}</b></span>{missing>0&&<small>{missing} personne{missing>1?'s':''} à désigner</small>}</span>;
 }
 
 function DayEditor({ data, actions, edit, onClose }) {
