@@ -7,6 +7,8 @@
 //   de confiance que la V1, a documenter honnetement (URL admin a ne pas partager).
 // - Validation de recuperation atomique et idempotente (section critique JSON,
 //   transaction SQL avec verrou de ligne en Postgres).
+import {validDate} from '../src/domain/calendarRules.js';
+import {restoredApi} from "./restored.js";
 import { createServer } from "http";
 import { readFileSync, existsSync } from "fs";
 import { join, extname, normalize } from "path";
@@ -27,11 +29,12 @@ function cleanDay(d) {
   const pauseStart = d.pauseStart && HHMM.test(d.pauseStart) ? d.pauseStart : null;
   const pauseEnd = d.pauseEnd && HHMM.test(d.pauseEnd) ? d.pauseEnd : null;
   if (!pauseStart !== !pauseEnd) return null; // les deux ou aucun
-  if (pauseStart && pauseEnd <= pauseStart) return null;
+  if (pauseStart && (pauseEnd <= pauseStart || pauseStart < d.start || pauseEnd > d.end)) return null;
   return { worked: true, start: d.start, end: d.end, pauseStart, pauseEnd, open: !!d.open, close: !!d.close };
 }
 function cleanTemplate(t) {
   if (!t || !Array.isArray(t.paire) || !Array.isArray(t.impaire) || t.paire.length !== 7 || t.impaire.length !== 7) return null;
+  if(t.paire[6]?.worked||t.impaire[6]?.worked)return null;
   const paire = t.paire.map(cleanDay), impaire = t.impaire.map(cleanDay);
   return paire.some((d) => !d) || impaire.some((d) => !d) ? null : { paire, impaire };
 }
@@ -54,6 +57,7 @@ const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".
 // Cœur de routage API, partagé entre le serveur Node local (createApp) et
 // l'adaptateur Neon Function (server/function.js). Retourne { code, obj }.
 export async function handleApi(store, method, url, body) {
+  const restored=await restoredApi(store,method,url,body);if(restored)return restored;
   const p = url.pathname;
   let m;
 
@@ -92,8 +96,9 @@ export async function handleApi(store, method, url, body) {
   if ((m = p.match(/^\/api\/overrides\/([\w-]+)\/(\d{4}-\d{2}-\d{2})$/))) {
     const [, empId, day] = m;
     if (!db.employees.some((e) => e.id === empId)) return { code: 404, obj: { error: "Salarié introuvable" } };
-    if (!ISODATE.test(day)) return { code: 400, obj: { error: "Date invalide" } };
+    if (!validDate(day)) return { code: 400, obj: { error: "Date invalide" } };
     if (method === "PUT") {
+      if(body?.worked&&parseISO(day).getDay()===0)return {code:400,obj:{error:"Le dimanche est un jour de fermeture."}};
       const d2 = cleanDay(body);
       if (!d2) return { code: 400, obj: { error: "Journée invalide" } };
       await store.putOverride(empId, day, d2);
@@ -167,7 +172,7 @@ export async function handleApi(store, method, url, body) {
     db.requests.filter((r) => r.type === "leave" && r.status === "approved").forEach((r) => {
       const weeks = new Set();
       requestDates(r).forEach((iso) => { const w = isoWeek(parseISO(iso)); if (w.year === year) weeks.add(w.week); });
-      leavesByEmployee[r.employeeId] = [...weeks].sort((a, b) => a - b);
+      leavesByEmployee[r.employeeId] = [...new Set([...(leavesByEmployee[r.employeeId]||[]),...weeks])].sort((a,b)=>a-b);
     });
     return { code: 200, obj: { year, weeks: isoWeeksInYear(year), leavesByEmployee } };
   }

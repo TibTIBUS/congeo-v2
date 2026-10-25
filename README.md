@@ -1,33 +1,26 @@
-# Congéo V2 (prototype)
+# Congéo V2
 
-Planning et congés pour une petite équipe (5 salariés fictifs) : gabarits
-semaines paires/impaires, exceptions, pause du midi, demandes de congés et
-récupérations avec validation admin, alertes de couverture ouverture/fermeture.
+Congés et planning du magasin de La Haye. L'interface reprend le design de la V1 : calendrier mensuel/annuel, espace salarié partagé et administration séparée.
 
-**Données 100 % fictives.** Accès identique à la V1 : **pas de connexion** —
-le salarié choisit son nom (mémorisé dans son navigateur) et l'administration
-est à une adresse séparée (`#/admin`), sans lien depuis l'espace salarié.
+## Fonctions
 
-Deux modes :
+- Demandes de congés et de récupération, à la journée ou à la semaine.
+- Validation, refus, proposition d'autres dates, annulation, modification et suppression.
+- Une absence validée par date, dérogation explicite pour une deuxième, jamais une troisième.
+- Semaines ISO paires/impaires, pauses, ajustements journaliers et alertes de présence réelle à l'ouverture/fermeture.
+- Page **Heures supplémentaires** : saisie en heures/minutes, corrections, historique et solde de récupération. Aucun total d'heures travaillées.
+- Décompte atomique des récupérations et recrédit lors d'une correction ou suppression.
+- Équipe, archivage des salariés, périodes interdites modifiables, export Excel et impression mensuelle/annuelle.
+- Affiche QR pour la V2. Préférences d'e-mail et file d'envoi (actif uniquement si RESEND_API_KEY et EMAIL_FROM sont configurés).
 
-- **Démo** (`npm run dev`, ou la version statique publiée) : tout dans le
-  navigateur (localStorage), aucune sauvegarde partagée entre appareils.
-- **Serveur** (`npm run build && npm start`) : API Node + persistance JSON,
-  ou PostgreSQL si `DATABASE_URL` est défini. Même accès sans connexion.
+L'accès reste celui demandé pour la V1 : pas de comptes, salarié choisi dans la liste et administration à une adresse séparée. Il ne s'agit pas d'une authentification.
 
-## Commandes
+## Développement
 
-```bash
-npm install
-npm run dev        # démo locale
-npm run build && npm start   # version serveur sur http://127.0.0.1:4180
-npm test           # tests unitaires + intégration (vitest, pg-mem, Postgres éphémère)
-npm run test:ui    # vérifications visuelles (Playwright)
-npm run test:e2e   # workflows bout en bout contre le serveur réel
-```
+Node.js 24. `npm ci`, `npm run dev`, `npm test`, `npm run build`, `npm run build:function`.
 
-## Mise en ligne
+La base et l'API V2 restent distinctes de la V1. Les migrations sont additives et conservent les données existantes.
 
-Voir **DEPLOY.md** : la démo statique est publiée sur GitHub Pages (gratuit,
-dépôt public) ; la version avec sauvegarde partagée nécessite un projet Neon
-séparé (API en Neon Function + base Postgres), comme la V1.
+Pour un aperçu isolé, définir CONGEO_PREVIEW_API dans un fichier .env.local ignoré par Git. Le proxy de développement est absent du site compilé. Sans cette variable, public/config.js détermine l'API.
+
+Les tests Postgres natifs requièrent un utilisateur non-root ou CONGEO_TEST_DATABASE_URL ; les tests de concurrence sont aussi vérifiables sur une branche Neon isolée.

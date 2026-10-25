@@ -9,32 +9,37 @@ import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
 import { createPgStore } from "../server/db-pg.js";
 
-let epg, store, client2;
+let epg, store, client2, schema;
 const PORT = 55000 + Math.floor(Math.random() * 2000); // port aléatoire : aucun Postgres éphémère résiduel d'un run précédent
 
 beforeAll(async () => {
+  if(!process.env.CONGEO_TEST_DATABASE_URL){
   epg = new EmbeddedPostgres({
     databaseDir: join(mkdtempSync(join(tmpdir(), "congeo-pg-")), "data"),
-    user: "postgres", password: "congeo-test", port: PORT, persistent: false,
+    createPostgresUser:process.getuid?.()===0, user: "postgres", password: "congeo-test", port: PORT, persistent: false,
   });
   await epg.initialise();
   await epg.start();
   await epg.createDatabase("congeo");
-  const mk = () => new pg.Client({ host: "127.0.0.1", port: PORT, user: "postgres", password: "congeo-test", database: "congeo" });
+  }
+  const mk = () => process.env.CONGEO_TEST_DATABASE_URL ? new pg.Client({connectionString:process.env.CONGEO_TEST_DATABASE_URL}) : new pg.Client({ host: "127.0.0.1", port: PORT, createPostgresUser:process.getuid?.()===0, user: "postgres", password: "congeo-test", database: "congeo" });
   const client1 = mk();
   await client1.connect();
-  store = await createPgStore(client1);
+  schema="test_restored_"+Date.now();
+  await client1.query(`CREATE SCHEMA ${schema}`);await client1.query(`SET search_path TO ${schema}`);
+  store = await createPgStore(client1,{schemaName:schema});
   client2 = mk();
   await client2.connect();
+  await client2.query(`SET search_path TO ${schema}`);
 }, 180000);
 
 afterAll(async () => {
-  await store.close();
-  await client2.end();
-  await epg.stop();
+  await store?.close();
+  await client2?.end();
+  await epg?.stop();
 }, 30000);
 
-describe("stockage Postgres réel (local éphémère)", () => {
+(process.getuid?.()===0&&!process.env.CONGEO_TEST_DATABASE_URL?describe.skip:describe)("stockage Postgres réel (local éphémère)", () => {
   it("schéma + seed + lecture du document", async () => {
     const doc = await store.getDoc();
     expect(doc.employees).toHaveLength(5);
@@ -46,7 +51,7 @@ describe("stockage Postgres réel (local éphémère)", () => {
     const r2 = doc.requests.find((r) => r.employeeId === "hugo" && r.type === "recovery");
     const balBefore = doc.recoveryLedger.filter((l) => l.employeeId === "hugo").reduce((a, l) => a + l.deltaMin, 0);
     // Deux appels concurrents sur DEUX connexions distinctes
-    const store2 = await createPgStore(client2, { seedIfEmpty: false });
+    const store2 = await createPgStore(client2, { seedIfEmpty: false,schemaName:schema });
     const [[c1, b1], [c2, b2]] = await Promise.all([store.validateRequest(r2.id), store2.validateRequest(r2.id)]);
     expect([c1, c2].sort()).toEqual([200, 200]);
     expect([b1.idempotent, b2.idempotent].filter(Boolean)).toHaveLength(1); // l'un déduit, l'autre est no-op

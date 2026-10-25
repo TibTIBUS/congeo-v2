@@ -23,6 +23,7 @@ export function openDb(path) {
   if (!db || db.seedVersion !== SEED_VERSION) { db = { ...seedDb(), seedVersion: SEED_VERSION }; persist(); }
   const mutate = (fn) => { const r = fn(db); persist(); return r; };
   return {
+    async transact(fn){const next=structuredClone(db);const result=fn(next);if(result?.then)throw Error('Local transactions must be synchronous.');db=next;persist();return result;},
     // Document complet (petit volume : boutique de 5 salariés)
     getDoc: async () => db,
     // --- mutations métier ---

@@ -63,8 +63,8 @@ describe("serveur, accès modèle V1 (sans connexion)", () => {
   });
   it("validation atomique et idempotente : déduction unique même en double appel", async () => {
     const [a, b] = await Promise.all([
-      api("/api/requests/r2/validate", { method: "POST" }),
-      api("/api/requests/r2/validate", { method: "POST" }),
+      api("/api/requests/r2/validate", { method: "POST",body:{override:true} }),
+      api("/api/requests/r2/validate", { method: "POST",body:{override:true} }),
     ]);
     expect([a.code, b.code].sort()).toEqual([200, 200]);
     expect(a.body.idempotent || b.body.idempotent).toBe(true);

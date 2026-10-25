@@ -11,7 +11,7 @@ export default function EmployeeView({ data, employee, actions }) {
   const [type, setType] = useState("leave");
   const [d1, setD1] = useState(""); const [d2, setD2] = useState("");
   const plans = getWeekPlan(data.templates, data.overrides, employee.id, wk.year, wk.week);
-  const total = plans.reduce((s, p) => s + plannedMinutes(p), 0);
+
   const bal = recoveryBalance(data, employee.id);
   const myLeaves = new Set();
   data.requests.filter((r) => r.employeeId === employee.id && r.type === "leave" && r.status === "approved")
@@ -34,10 +34,6 @@ export default function EmployeeView({ data, employee, actions }) {
       <div style={{ fontWeight: 800, fontSize: 17 }}>{fmtRange(weekDates(wk.year, wk.week)[0])}</div>
       <PariteBadge parite={parityOf(wk)} week={wk.week} />
     </WeekNav>
-    <div className="card" style={{ padding: "10px 16px", margin: "12px 0", display: "flex", justifyContent: "space-between", background: "var(--soft)", borderColor: "transparent" }}>
-      <span className="mut" style={{ fontSize: 12.5, fontWeight: 600 }}>Total travaillé<br /><span style={{ fontWeight: 500, fontSize: 10.5 }}>pauses déduites</span></span>
-      <Hm min={total} strong />
-    </div>
     {plans.map((p, i) => {
       const iso = toISODate(p.date);
       const onLeave = myLeaves.has(iso), onRec = myRecoveryDays.has(iso);

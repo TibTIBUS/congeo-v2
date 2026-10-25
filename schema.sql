@@ -82,3 +82,13 @@ CREATE TABLE IF NOT EXISTS settings (
   key text PRIMARY KEY,
   value text NOT NULL
 );
+
+-- Additive V1 feature restoration. Existing V2 records and IDs are retained.
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS email text NOT NULL DEFAULT '';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS notify boolean NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS details jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_status_check;
+ALTER TABLE requests ADD CONSTRAINT requests_status_check CHECK(status IN ('pending','approved','rejected','proposed','cancelled'));
+ALTER TABLE recovery_ledger ADD COLUMN IF NOT EXISTS request_ref text;
+CREATE TABLE IF NOT EXISTS outbox(id text PRIMARY KEY,employee_id text NOT NULL,subject text NOT NULL,body text NOT NULL,status text NOT NULL DEFAULT 'queued',created timestamptz NOT NULL DEFAULT now());

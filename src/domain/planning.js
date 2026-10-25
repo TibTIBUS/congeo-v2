@@ -63,3 +63,13 @@ export function weekCoverage(plansByEmployee) {
   }
   return { openingsCovered: covO, closingsCovered: covF, days: SHOP_DAYS.length, warnings };
 }
+
+// Presence reflects approved absences, while templates remain unchanged.
+export function effectiveWeekPlan(data,employeeId,year,week){
+ const absent=new Set();
+ for(const r of data.requests||[])if(r.employeeId===employeeId&&r.status==='approved'){
+  if(r.type==='recovery')for(const d of r.dates||[])absent.add(d);
+  else {let d=new Date(r.dateStart+'T12:00:00');const end=new Date(r.dateEnd+'T12:00:00');for(let i=0;d<=end&&i<370;i++,d.setDate(d.getDate()+1))absent.add(toISODate(d));}
+ }
+ return getWeekPlan(data.templates,data.overrides,employeeId,year,week).map(d=>absent.has(toISODate(d.date))?{...d,worked:false,open:false,close:false}:d);
+}

@@ -261,7 +261,7 @@ var require_postgres_interval = __commonJS({
       if (!(this instanceof PostgresInterval)) {
         return new PostgresInterval(raw);
       }
-      extend(this, parse(raw));
+      extend(this, parse2(raw));
     }
     var properties = ["seconds", "minutes", "hours", "days", "months", "years"];
     PostgresInterval.prototype.toPostgres = function() {
@@ -322,7 +322,7 @@ var require_postgres_interval = __commonJS({
       var microseconds = fraction + "000000".slice(fraction.length);
       return parseInt(microseconds, 10) / 1e3;
     }
-    function parse(interval) {
+    function parse2(interval) {
       if (!interval) return {};
       var matches = INTERVAL.exec(interval);
       var isNegative = matches[8] === "-";
@@ -809,13 +809,13 @@ var require_binaryParsers = __commonJS({
           console.log("ERROR: ElementType not implemented: " + elementType2);
         }
       };
-      var parse = function(dimension, elementType2) {
+      var parse2 = function(dimension, elementType2) {
         var array = [];
         var i2;
         if (dimension.length > 1) {
           var count = dimension.shift();
           for (i2 = 0; i2 < count; i2++) {
-            array[i2] = parse(dimension, elementType2);
+            array[i2] = parse2(dimension, elementType2);
           }
           dimension.unshift(count);
         } else {
@@ -825,7 +825,7 @@ var require_binaryParsers = __commonJS({
         }
         return array;
       };
-      return parse(dims, elementType);
+      return parse2(dims, elementType);
     };
     var parseText = function(value) {
       return value.toString("utf8");
@@ -1588,7 +1588,7 @@ var require_type_overrides = __commonJS({
 var require_pg_connection_string = __commonJS({
   "node_modules/pg-connection-string/index.js"(exports, module) {
     "use strict";
-    function parse(str, options = {}) {
+    function parse2(str, options = {}) {
       if (str.charAt(0) === "/") {
         const config2 = str.split(" ");
         return { host: config2[0], database: config2[1] };
@@ -1750,7 +1750,7 @@ var require_pg_connection_string = __commonJS({
       return poolConfig;
     }
     function parseIntoClientConfig(str) {
-      return toClientConfig(parse(str));
+      return toClientConfig(parse2(str));
     }
     function deprecatedSslModeWarning(sslmode) {
       if (!deprecatedSslModeWarning.warned && typeof process !== "undefined" && process.emitWarning) {
@@ -1765,10 +1765,10 @@ To prepare for this change:
 See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.`);
       }
     }
-    module.exports = parse;
-    parse.parse = parse;
-    parse.toClientConfig = toClientConfig;
-    parse.parseIntoClientConfig = parseIntoClientConfig;
+    module.exports = parse2;
+    parse2.parse = parse2;
+    parse2.toClientConfig = toClientConfig;
+    parse2.parseIntoClientConfig = parseIntoClientConfig;
   }
 });
 
@@ -1778,7 +1778,7 @@ var require_connection_parameters = __commonJS({
     "use strict";
     var dns = __require("dns");
     var defaults2 = require_defaults();
-    var parse = require_pg_connection_string().parse;
+    var parse2 = require_pg_connection_string().parse;
     var val = function(key, config, envVar) {
       if (config[key]) {
         return config[key];
@@ -1816,9 +1816,9 @@ var require_connection_parameters = __commonJS({
     };
     var ConnectionParameters = class {
       constructor(config) {
-        config = typeof config === "string" ? parse(config) : config || {};
+        config = typeof config === "string" ? parse2(config) : config || {};
         if (config.connectionString) {
-          config = Object.assign({}, config, parse(config.connectionString));
+          config = Object.assign({}, config, parse2(config.connectionString));
         }
         this.user = val("user", config);
         this.database = val("database", config);
@@ -2544,7 +2544,7 @@ var require_serializer = __commonJS({
       );
     };
     var emptyArray = [];
-    var parse = (query2) => {
+    var parse2 = (query2) => {
       const name = query2.name || "";
       if (name.length > 63) {
         console.error("Warning! Postgres only supports 63 characters for query names.");
@@ -2691,7 +2691,7 @@ var require_serializer = __commonJS({
       sendSASLInitialResponseMessage,
       sendSCRAMClientFinalMessage,
       query,
-      parse,
+      parse: parse2,
       bind,
       execute,
       describe,
@@ -3080,7 +3080,7 @@ var require_dist = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.DatabaseError = exports.serialize = void 0;
-    exports.parse = parse;
+    exports.parse = parse2;
     var messages_1 = require_messages();
     Object.defineProperty(exports, "DatabaseError", { enumerable: true, get: function() {
       return messages_1.DatabaseError;
@@ -3090,7 +3090,7 @@ var require_dist = __commonJS({
       return serializer_1.serialize;
     } });
     var parser_1 = require_parser();
-    function parse(stream, callback) {
+    function parse2(stream, callback) {
       const parser = new parser_1.Parser();
       stream.on("data", (buffer) => parser.parse(buffer, callback));
       return new Promise((resolve) => stream.on("end", () => resolve()));
@@ -3178,7 +3178,7 @@ var require_connection = __commonJS({
   "node_modules/pg/lib/connection.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events").EventEmitter;
-    var { parse, serialize } = require_dist();
+    var { parse: parse2, serialize } = require_dist();
     var stream = require_stream();
     var { getStream } = stream;
     var flushBuffer = serialize.flush();
@@ -3284,7 +3284,7 @@ var require_connection = __commonJS({
         self.emit("sslconnect");
       }
       attachListeners(stream2) {
-        parse(stream2, (msg) => {
+        parse2(stream2, (msg) => {
           const eventName = msg.name === "error" ? "errorMessage" : msg.name;
           if (this._emitMessage) {
             this.emit("message", msg);
@@ -5429,6 +5429,65 @@ function attachDatabasePool(pool2, options) {
   attached.add(databasePool);
 }
 
+// server/persist.js
+var different = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
+async function persistChanges(client, before, after) {
+  const q = (sql, args = []) => client.query(sql, args);
+  for (const e of after.employees) {
+    const prev = before.employees.find((x) => x.id === e.id);
+    if (!different(prev, e)) continue;
+    await q("INSERT INTO employees(id,name,role,color,active,email,notify) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET name=$2,role=$3,color=$4,active=$5,email=$6,notify=$7", [e.id, e.name, e.role || "", e.color || "#377d7a", e.active !== false, e.email || "", !!e.notify]);
+  }
+  for (const [emp, t] of Object.entries(after.templates)) {
+    if (!different(before.templates[emp], t)) continue;
+    for (const parity of ["paire", "impaire"]) for (let i = 0; i < 7; i++) {
+      const d = t[parity]?.[i] || { worked: false };
+      await q("INSERT INTO templates(employee_id,parity,weekday,worked,start_time,end_time,pause_start,pause_end,is_open,is_close) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(employee_id,parity,weekday) DO UPDATE SET worked=$4,start_time=$5,end_time=$6,pause_start=$7,pause_end=$8,is_open=$9,is_close=$10", [emp, parity, i, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]);
+    }
+  }
+  for (const [key, d] of Object.entries(after.overrides)) {
+    if (!different(before.overrides[key], d)) continue;
+    const [emp, day] = key.split("|");
+    await q("INSERT INTO plan_overrides(employee_id,day,worked,start_time,end_time,pause_start,pause_end,is_open,is_close) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(employee_id,day) DO UPDATE SET worked=$3,start_time=$4,end_time=$5,pause_start=$6,pause_end=$7,is_open=$8,is_close=$9", [emp, day, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]);
+  }
+  for (const key of Object.keys(before.overrides)) if (!(key in after.overrides)) {
+    const [emp, day] = key.split("|");
+    await q("DELETE FROM plan_overrides WHERE employee_id=$1 AND day=$2", [emp, day]);
+  }
+  for (const r of after.requests) {
+    const prev = before.requests.find((x) => x.id === r.id);
+    if (!different(prev, r)) continue;
+    const args = [r.employeeId, r.type, r.dateStart || null, r.dateEnd || null, r.dates || null, r.status, r.createdAt || (/* @__PURE__ */ new Date()).toISOString(), r.deductedMin || 0, JSON.stringify(r.details || {})];
+    if (prev) await q("UPDATE requests SET employee_id=$1,type=$2,date_start=$3,date_end=$4,dates=$5,status=$6,created_at=$7,deducted_min=$8,details=$9 WHERE id=$10", [...args, r.id]);
+    else {
+      const { rows } = await q("INSERT INTO requests(employee_id,type,date_start,date_end,dates,status,created_at,deducted_min,details) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id", args);
+      r.id = String(rows[0].id);
+    }
+  }
+  for (const r of before.requests) if (!after.requests.some((x) => x.id === r.id)) await q("DELETE FROM requests WHERE id=$1", [r.id]);
+  for (const l of after.recoveryLedger) {
+    const prev = before.recoveryLedger.find((x) => x.id === l.id);
+    if (!different(prev, l)) continue;
+    const args = [l.employeeId, l.deltaMin, l.reason, l.at || (/* @__PURE__ */ new Date()).toISOString(), l.requestId || null];
+    if (prev) await q("UPDATE recovery_ledger SET employee_id=$1,delta_min=$2,reason=$3,at=$4,request_ref=$5 WHERE id=$6", [...args, l.id]);
+    else {
+      const { rows } = await q("INSERT INTO recovery_ledger(employee_id,delta_min,reason,at,request_ref) VALUES($1,$2,$3,$4,$5) RETURNING id", args);
+      l.id = String(rows[0].id);
+    }
+  }
+  for (const l of before.recoveryLedger) if (!after.recoveryLedger.some((x) => x.id === l.id)) await q("DELETE FROM recovery_ledger WHERE id=$1", [l.id]);
+  if (different(before.blocks, after.blocks)) {
+    await q("DELETE FROM blocks");
+    for (const b of after.blocks) await q("INSERT INTO blocks(id,label,start_date,end_date) VALUES($1,$2,$3,$4)", [b.id, b.label, b.start, b.end]);
+  }
+  for (const [key, value] of Object.entries(after.settings || {})) if (before.settings?.[key] !== value) await q("INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2", [key, String(value)]);
+  for (const o of after.outbox || []) {
+    const prev = (before.outbox || []).find((x) => x.id === o.id);
+    if (!different(prev, o)) continue;
+    await q("INSERT INTO outbox(id,employee_id,subject,body,status,created) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET status=$5", [o.id, o.employee_id, o.subject, o.body, o.status, o.created]);
+  }
+}
+
 // server/db-pg.js
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -5532,15 +5591,15 @@ function weekDates(year, week) {
   const mon = mondayOfISOWeek(year, week);
   return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
 }
-function parityOf(iso2) {
-  return iso2.week % 2 === 0 ? "paire" : "impaire";
+function parityOf(iso3) {
+  return iso3.week % 2 === 0 ? "paire" : "impaire";
 }
 
 // src/domain/planning.js
 function getDayPlan(templates, overrides, employeeId, date) {
-  const iso2 = toISODate(date);
+  const iso3 = toISODate(date);
   const wd = (date.getDay() + 6) % 7;
-  const key = `${employeeId}|${iso2}`;
+  const key = `${employeeId}|${iso3}`;
   if (overrides[key]) return overrides[key];
   const p = parityOf(isoWeek(date));
   const t = templates[employeeId]?.[p]?.[wd];
@@ -5574,12 +5633,12 @@ function leaveDates(req) {
   return out;
 }
 function requestDates(req) {
-  return req.type === "leave" ? leaveDates(req) : req.dates;
+  return req.type === "leave" ? leaveDates(req) : [...new Set(req.dates || [])];
 }
 function recoveryPlannedMinutes(req, templates, overrides) {
   let total = 0;
-  for (const iso2 of requestDates(req)) {
-    const d = parseISO(iso2);
+  for (const iso3 of requestDates(req)) {
+    const d = parseISO(iso3);
     total += plannedMinutes(getDayPlan(templates, overrides, req.employeeId, d));
   }
   return total;
@@ -5603,13 +5662,17 @@ var reqFromRow = (r) => ({
   ...r.date_start ? { dateStart: iso(r.date_start) } : {},
   ...r.date_end ? { dateEnd: iso(r.date_end) } : {},
   ...r.dates ? { dates: r.dates.map(iso) } : {},
+  details: r.details || {},
   status: r.status,
   createdAt: r.created_at,
   ...r.deducted_min != null ? { deductedMin: r.deducted_min } : {},
   ...r.decided_at ? { decidedAt: r.decided_at } : {}
 });
-var ledgerFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaMin: l.delta_min, reason: l.reason, at: l.at });
-async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, applySchema = true } = {}) {
+var ledgerFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaMin: l.delta_min, reason: l.reason, at: l.at, requestId: l.request_ref });
+async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, applySchema = true, schemaName = "public" } = {}) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName)) throw Error("Invalid schema name");
+  const connection = client;
+  client = { query: (sql, args) => connection.query(sql.replace(/(?<![\w.])(employees|templates|plan_overrides|requests|recovery_ledger|blocks|settings|outbox)\b/g, schemaName + ".$1"), args), end: () => connection.end() };
   const q = async (text, values) => (await client.query(text, values)).rows;
   if (applySchema) await client.query(schemaSql ?? readFileSync(fileURLToPath(new URL("../schema.sql", import.meta.url)), "utf8"));
   if (seedIfEmpty && (await q("SELECT COUNT(*)::int AS n FROM employees"))[0].n === 0) {
@@ -5622,7 +5685,7 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
           const d = t[parity][wd];
           await client.query(
             "INSERT INTO templates (employee_id,parity,weekday,worked,start_time,end_time,pause_start,pause_end,is_open,is_close) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-            [empId, parity, wd, d.worked, d.start, d.end, d.pauseStart, d.pauseEnd, d.open, d.close]
+            [empId, parity, wd, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]
           );
         }
     for (const r of s.requests)
@@ -5634,14 +5697,14 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
       await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason,at) VALUES ($1,$2,$3,$4)", [l.employeeId, l.deltaMin, l.reason, l.at]);
   }
   const templatesOf = async (empId) => {
-    const out = { paire: [], impaire: [] };
+    const out = { paire: Array.from({ length: 7 }, () => ({ worked: false })), impaire: Array.from({ length: 7 }, () => ({ worked: false })) };
     for (const r of await q("SELECT * FROM templates WHERE employee_id=$1", [empId])) out[r.parity][r.weekday] = dayRow(r);
     return out;
   };
   const balanceOf = async (empId) => Number((await q("SELECT COALESCE(SUM(delta_min),0) AS b FROM recovery_ledger WHERE employee_id=$1", [empId]))[0].b);
-  return {
+  const store2 = {
     async getDoc() {
-      const employees = (await q("SELECT * FROM employees ORDER BY id")).map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color }));
+      const employees = (await q("SELECT * FROM employees ORDER BY id")).map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color, active: e.active !== false, email: e.email || "", notify: !!e.notify }));
       const templates = {};
       for (const e of employees) templates[e.id] = await templatesOf(e.id);
       const overrides = {};
@@ -5650,7 +5713,8 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
       const recoveryLedger = (await q("SELECT * FROM recovery_ledger ORDER BY at")).map(ledgerFromRow);
       const blocks = (await q("SELECT * FROM blocks ORDER BY start_date")).map((b) => ({ id: b.id, label: b.label, start: b.start_date, end: b.end_date }));
       const settings = Object.fromEntries((await q("SELECT * FROM settings")).map((r) => [r.key, r.value]));
-      return { employees, templates, overrides, requests, recoveryLedger, blocks, settings };
+      const outbox = await q("SELECT * FROM outbox ORDER BY created DESC LIMIT 100");
+      return { employees, templates, overrides, requests, recoveryLedger, blocks, settings, outbox };
     },
     // --- mutations métier ---
     async putTemplate(empId, tpl) {
@@ -5662,7 +5726,7 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
             const d = tpl[parity][wd];
             await client.query(
               "INSERT INTO templates (employee_id,parity,weekday,worked,start_time,end_time,pause_start,pause_end,is_open,is_close) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-              [empId, parity, wd, d.worked, d.start, d.end, d.pauseStart, d.pauseEnd, d.open, d.close]
+              [empId, parity, wd, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]
             );
           }
         await client.query("COMMIT");
@@ -5675,7 +5739,7 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
       `INSERT INTO plan_overrides (employee_id,day,worked,start_time,end_time,pause_start,pause_end,is_open,is_close)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          ON CONFLICT (employee_id, day) DO UPDATE SET worked=$3,start_time=$4,end_time=$5,pause_start=$6,pause_end=$7,is_open=$8,is_close=$9`,
-      [empId, day, d.worked, d.start, d.end, d.pauseStart, d.pauseEnd, d.open, d.close]
+      [empId, day, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]
     ),
     deleteOverride: (empId, day) => client.query("DELETE FROM plan_overrides WHERE employee_id=$1 AND day=$2", [empId, day]),
     async addRecovery(entry) {
@@ -5694,6 +5758,7 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
     async validateRequest(requestId) {
       await client.query("BEGIN");
       try {
+        await client.query("SELECT pg_advisory_xact_lock(25102026)");
         const row = (await q("SELECT * FROM requests WHERE id=$1 FOR UPDATE", [requestId]))[0];
         if (!row) {
           await client.query("ROLLBACK");
@@ -5711,7 +5776,7 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
           return [409, { error: "Demande d\xE9j\xE0 refus\xE9e" }];
         }
         ;
-        let deduct = 0;
+        let deduct2 = 0;
         if (r.type === "recovery") {
           const chk = checkRecoveryValidation(r, { [r.employeeId]: await templatesOf(r.employeeId) }, await overridesOf(r.employeeId), await balanceOf(r.employeeId));
           if (!chk.ok) {
@@ -5719,13 +5784,13 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
             return [409, { error: chk.reason }];
           }
           ;
-          deduct = chk.deductMinutes;
+          deduct2 = chk.deductMinutes;
         }
-        await client.query("UPDATE requests SET status='approved', deducted_min=$1, decided_at=now() WHERE id=$2", [deduct, requestId]);
-        if (deduct > 0)
-          await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason) VALUES ($1,$2,$3)", [r.employeeId, -deduct, "R\xE9cup\xE9ration valid\xE9e"]);
+        await client.query("UPDATE requests SET status='approved', deducted_min=$1, decided_at=now() WHERE id=$2", [deduct2, requestId]);
+        if (deduct2 > 0)
+          await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason) VALUES ($1,$2,$3)", [r.employeeId, -deduct2, "R\xE9cup\xE9ration valid\xE9e"]);
         await client.query("COMMIT");
-        return [200, { request: { ...r, status: "approved", deductedMin: deduct } }];
+        return [200, { request: { ...r, status: "approved", deductedMin: deduct2 } }];
       } catch (e) {
         await client.query("ROLLBACK");
         throw e;
@@ -5734,6 +5799,7 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
     async rejectRequest(requestId) {
       await client.query("BEGIN");
       try {
+        await client.query("SELECT pg_advisory_xact_lock(25102026)");
         const row = (await q("SELECT * FROM requests WHERE id=$1 FOR UPDATE", [requestId]))[0];
         if (!row) {
           await client.query("ROLLBACK");
@@ -5753,12 +5819,350 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
         throw e;
       }
     },
+    async transact(fn) {
+      await client.query("BEGIN");
+      try {
+        await client.query("SELECT pg_advisory_xact_lock(25102026)");
+        const before = await store2.getDoc(), after = structuredClone(before);
+        const result = await fn(after);
+        await persistChanges(client, before, after);
+        await client.query("COMMIT");
+        return result;
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      }
+    },
     close: () => client.end()
   };
+  return store2;
   async function overridesOf(empId) {
     const out = {};
     for (const r of await q("SELECT * FROM plan_overrides WHERE employee_id=$1", [empId])) out[`${empId}|${iso(r.day)}`] = dayRow(r);
     return out;
+  }
+}
+
+// src/domain/calendarRules.js
+var iso2 = (d) => d.toISOString().slice(0, 10);
+var parse = (s) => /* @__PURE__ */ new Date(s + "T12:00:00Z");
+function validDate(s) {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parse(s).getTime()) && iso2(parse(s)) === s;
+}
+function workdays(start, end) {
+  if (!validDate(start) || !validDate(end) || end < start) throw new Error("Choisissez une p\xE9riode valide.");
+  const days = [];
+  const d = parse(start);
+  for (let i = 0; iso2(d) <= end; i++) {
+    if (i >= 370) throw new Error("La p\xE9riode ne peut pas d\xE9passer un an.");
+    if (d.getUTCDay() !== 0) days.push(iso2(d));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  if (!days.length) throw new Error("Le dimanche est un jour de fermeture.");
+  return days;
+}
+function weekNumber(s) {
+  const d = parse(s);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  return Math.ceil(((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+}
+var defaultBlocks = [{ id: "noel-2026", label: "Vacances de No\xEBl \xB7 zone B", start: "2026-12-19", end: "2027-01-03" }];
+function blockedReason(day, blocks, firstWeek) {
+  if (parse(day).getUTCDay() === 0) return "Dimanche \xB7 magasin ferm\xE9";
+  if (firstWeek && weekNumber(day) === 1) return "Semaine n\xB0 1";
+  return blocks.find((b) => b.start <= day && b.end >= day)?.label || "";
+}
+var today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(/* @__PURE__ */ new Date());
+
+// server/restored.js
+import { randomUUID } from "node:crypto";
+var id = () => randomUUID();
+var details = (r) => r.details || {};
+var dates = (r) => r.type === "recovery" ? [...new Set(r.dates || [])] : workdays(r.dateStart, r.dateEnd);
+var balance = (db, emp) => db.recoveryLedger.filter((l) => l.employeeId === emp).reduce((s, l) => s + Number(l.deltaMin), 0);
+function toV1(r) {
+  const ds = dates(r);
+  return { id: r.id, employee_id: r.employeeId, leave_type: r.type, start: r.dateStart || ds[0], end: r.dateEnd || ds.at(-1), days: JSON.stringify(ds), status: r.status === "rejected" ? "refused" : r.status, created: r.createdAt, ...details(r) };
+}
+function planningData(db, admin, actor) {
+  return { employees: db.employees.map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color, active: e.active === false ? 0 : 1 })), requests: db.requests.map((r) => {
+    const x = toV1(r);
+    if (!admin && actor !== r.employeeId) {
+      delete x.note;
+      delete x.answer;
+    }
+    return x;
+  }), blocks: db.settings?.blocksConfigured === "true" || db.blocks?.length ? db.blocks : defaultBlocks, firstWeek: db.settings?.firstWeek !== "false", profile: db.employees.find((e) => e.id === actor) || null, outbox: admin ? db.outbox || [] : [], mailReady: !!process.env.RESEND_API_KEY && !!process.env.EMAIL_FROM };
+}
+function queued(db, r, body) {
+  const e = db.employees.find((e2) => e2.id === r.employeeId);
+  if (e?.notify && e.email) {
+    db.outbox ??= [];
+    db.outbox.push({ id: id(), employee_id: e.id, subject: "Votre demande d\u2019absence", body, status: "queued", created: (/* @__PURE__ */ new Date()).toISOString() });
+  }
+}
+function checkDates(db, start, end, allowPast = false) {
+  const days = workdays(start, end);
+  if (!allowPast && start < today()) throw Error("Choisissez une date \xE0 partir d\u2019aujourd\u2019hui.");
+  const blocks = db.settings?.blocksConfigured === "true" || db.blocks?.length ? db.blocks : defaultBlocks;
+  const bad = days.find((d) => blockedReason(d, blocks, db.settings?.firstWeek !== "false"));
+  if (bad) throw Error(`${bad} : ${blockedReason(bad, blocks, db.settings?.firstWeek !== "false")}. Choisissez une autre p\xE9riode.`);
+  return days;
+}
+function checkCapacity(db, r) {
+  const ds = dates(r);
+  for (const day of ds) {
+    const others = db.requests.filter((q) => q.id !== r.id && q.status === "approved" && dates(q).includes(day));
+    if (others.some((q) => q.employeeId === r.employeeId)) throw Error("Ce salari\xE9 a d\xE9j\xE0 une absence valid\xE9e sur cette p\xE9riode.");
+    if (others.length >= (details(r).override ? 2 : 1)) throw Error(details(r).override ? "Deux personnes sont d\xE9j\xE0 absentes sur cette p\xE9riode." : "Une personne est d\xE9j\xE0 absente sur cette p\xE9riode. Une d\xE9rogation est n\xE9cessaire.");
+  }
+}
+function deduct(db, r) {
+  if (r.type !== "recovery") return;
+  const need = recoveryPlannedMinutes(r, db.templates, db.overrides);
+  if (need <= 0) throw Error("Aucune heure n\u2019est pr\xE9vue pour cette r\xE9cup\xE9ration. Renseignez d\u2019abord le planning.");
+  if (need > balance(db, r.employeeId)) throw Error("Le solde de r\xE9cup\xE9ration ne couvre pas les heures pr\xE9vues.");
+  r.deductedMin = need;
+  db.recoveryLedger.push({ id: id(), employeeId: r.employeeId, deltaMin: -need, reason: "R\xE9cup\xE9ration valid\xE9e", requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+}
+function refund(db, r) {
+  if (r.status === "approved" && r.type === "recovery" && r.deductedMin > 0) {
+    db.recoveryLedger.push({ id: id(), employeeId: r.employeeId, deltaMin: r.deductedMin, reason: "R\xE9cup\xE9ration recr\xE9dit\xE9e apr\xE8s correction ou suppression", requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+    r.deductedMin = 0;
+  }
+}
+function absence(r, start, end, type) {
+  r.type = type || r.type;
+  if (!["leave", "recovery"].includes(r.type)) throw Error("Type d\u2019absence invalide.");
+  if (r.type === "recovery") {
+    r.dates = workdays(start, end);
+    delete r.dateStart;
+    delete r.dateEnd;
+  } else {
+    r.dateStart = start;
+    r.dateEnd = end;
+    delete r.dates;
+  }
+}
+function stale(r, p) {
+  const x = toV1(r);
+  if (p.originalStart !== void 0 && p.originalStart !== x.start || p.originalEnd !== void 0 && p.originalEnd !== x.end || p.originalStatus !== void 0 && p.originalStatus !== x.status) throw Error("Cette demande a chang\xE9. Actualisez le planning avant de continuer.");
+}
+function changePlanning(db, p) {
+  db.settings ??= {};
+  db.blocks ??= [];
+  db.outbox ??= [];
+  const admin = p.admin === true, actor = String(p.employee || ""), a = p.action;
+  const requireAdmin = () => {
+    if (!admin) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+  };
+  if (!admin && !db.employees.some((e) => e.id === actor && e.active !== false)) throw Error("S\xE9lectionnez un salari\xE9 actif.");
+  if (a === "employee") {
+    requireAdmin();
+    const name = String(p.name || "").trim();
+    if (!name || name.length > 80) throw Error("Indiquez un nom de 1 \xE0 80 caract\xE8res.");
+    const employee = { id: id(), name, color: "#377d7a", role: "", active: true, email: "", notify: false };
+    db.employees.push(employee);
+    db.templates[employee.id] = { paire: Array.from({ length: 7 }, () => ({ worked: false })), impaire: Array.from({ length: 7 }, () => ({ worked: false })) };
+    return;
+  }
+  if (a === "archive") {
+    requireAdmin();
+    const e = db.employees.find((e2) => e2.id === p.id);
+    if (!e) throw Error("Salari\xE9 introuvable.");
+    e.active = !!p.active;
+    return;
+  }
+  if (a === "profile") {
+    const e = db.employees.find((e2) => e2.id === actor);
+    const email = String(p.email || "").trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || p.notify && !email) throw Error("V\xE9rifiez votre adresse e-mail.");
+    e.email = email;
+    e.notify = !!p.notify;
+    return;
+  }
+  if (a === "settings") {
+    requireAdmin();
+    if (!Array.isArray(p.blocks) || p.blocks.length > 50) throw Error("P\xE9riodes incorrectes.");
+    db.blocks = p.blocks.map((b) => {
+      if (!validDate(b.start) || !validDate(b.end) || b.end < b.start || !String(b.label || "").trim()) throw Error("V\xE9rifiez les dates et le nom de chaque p\xE9riode.");
+      return { ...b, id: id(), label: String(b.label).slice(0, 120) };
+    });
+    db.settings.firstWeek = p.firstWeek ? "true" : "false";
+    db.settings.blocksConfigured = "true";
+    return;
+  }
+  if (a === "request") {
+    const emp = admin ? String(p.target) : actor;
+    if (!db.employees.some((e) => e.id === emp && e.active !== false)) throw Error("S\xE9lectionnez un salari\xE9 actif.");
+    checkDates(db, p.start, p.end);
+    const r2 = { id: id(), employeeId: emp, type: p.leaveType || "leave", status: "pending", createdAt: (/* @__PURE__ */ new Date()).toISOString(), details: { note: String(p.note || "").slice(0, 1500), override: admin && p.override === true ? 1 : 0 } };
+    absence(r2, p.start, p.end, r2.type);
+    checkCapacity(db, r2);
+    db.requests.push(r2);
+    return;
+  }
+  if (a === "sendMail") {
+    requireAdmin();
+    return;
+  }
+  if (["hoursAdd", "hoursEdit", "hoursDelete"].includes(a)) {
+    requireAdmin();
+    const employee = String(p.target || "");
+    if (!db.employees.some((e) => e.id === employee)) throw Error("Salari\xE9 introuvable.");
+    const l = db.recoveryLedger.find((l2) => String(l2.id) === String(p.id));
+    if (a !== "hoursAdd" && (!l || l.employeeId !== employee || l.requestId || l.deltaMin <= 0 || /recréditée/.test(l.reason))) throw Error("Seules les heures suppl\xE9mentaires saisies manuellement peuvent \xEAtre corrig\xE9es.");
+    if (l && p.originalMinutes !== l.deltaMin) throw Error("Cette saisie a chang\xE9. Actualisez la page.");
+    const value = a === "hoursDelete" ? 0 : Math.round(Number(p.minutes));
+    if (a !== "hoursDelete" && (!Number.isFinite(value) || value <= 0 || value > 6e4)) throw Error("Indiquez une dur\xE9e positive, en heures et minutes.");
+    if (balance(db, employee) - (l?.deltaMin || 0) + value < 0) throw Error("Ces heures ont d\xE9j\xE0 \xE9t\xE9 utilis\xE9es. La correction rendrait le solde n\xE9gatif.");
+    if (a === "hoursDelete") db.recoveryLedger = db.recoveryLedger.filter((x) => x !== l);
+    else if (l) {
+      l.deltaMin = value;
+      l.reason = String(p.reason || "Heures suppl\xE9mentaires").slice(0, 500);
+    } else db.recoveryLedger.push({ id: id(), employeeId: employee, deltaMin: value, reason: String(p.reason || "Heures suppl\xE9mentaires").slice(0, 500), at: (/* @__PURE__ */ new Date()).toISOString() });
+    return;
+  }
+  const r = db.requests.find((r2) => String(r2.id) === String(p.id));
+  if (!r) throw Error("Demande introuvable ou d\xE9j\xE0 supprim\xE9e.");
+  r.details ??= {};
+  if (!admin && r.employeeId !== actor) throw Error("Cette demande appartient \xE0 un autre salari\xE9.");
+  if (["deleteRequest", "deleteApproved", "editApproved"].includes(a)) {
+    requireAdmin();
+    stale(r, p);
+    if (a === "editApproved" && r.status !== "approved") throw Error("Ce cong\xE9 n\u2019est plus valid\xE9.");
+    if (a === "editApproved") {
+      checkDates(db, p.start, p.end, true);
+      refund(db, r);
+      absence(r, p.start, p.end, p.leaveType);
+      r.details = { ...r.details, override: p.override ? 1 : 0, answer: String(p.answer || "").slice(0, 1500), cancel_requested: 0 };
+      checkCapacity(db, r);
+      deduct(db, r);
+    } else {
+      refund(db, r);
+      db.requests = db.requests.filter((q) => q.id !== r.id);
+    }
+    queued(db, r, a === "editApproved" ? "Aline a modifi\xE9 votre absence valid\xE9e. Consultez Cong\xE9o pour voir les nouvelles dates." : "Aline a supprim\xE9 votre demande d\u2019absence. Les r\xE9cup\xE9rations d\xE9j\xE0 d\xE9compt\xE9es sont recr\xE9dit\xE9es.");
+    return;
+  }
+  if (a === "approve") {
+    requireAdmin();
+    if (r.status === "approved") return;
+    if (r.status !== "pending") throw Error("Cette demande a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
+    const x = toV1(r);
+    checkDates(db, x.start, x.end);
+    r.details.override = p.override ? 1 : 0;
+    checkCapacity(db, r);
+    deduct(db, r);
+    r.status = "approved";
+    r.details.answer = String(p.answer || "").slice(0, 1500);
+  } else if (a === "refuse") {
+    requireAdmin();
+    if (!["pending", "proposed"].includes(r.status)) throw Error("Cette demande a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
+    r.status = "rejected";
+    r.details.answer = String(p.answer || "").slice(0, 1500);
+  } else if (a === "propose") {
+    requireAdmin();
+    if (!["pending", "proposed"].includes(r.status)) throw Error("Cette demande a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
+    checkDates(db, p.start, p.end);
+    const q = structuredClone(r);
+    absence(q, p.start, p.end);
+    q.details.override = 0;
+    checkCapacity(db, q);
+    r.status = "proposed";
+    r.details.proposed_start = p.start;
+    r.details.proposed_end = p.end;
+    r.details.answer = String(p.answer || "").slice(0, 1500);
+  } else if (a === "acceptProposal") {
+    if (admin || r.status !== "proposed") throw Error("Le salari\xE9 doit accepter une proposition en cours.");
+    checkDates(db, r.details.proposed_start, r.details.proposed_end);
+    absence(r, r.details.proposed_start, r.details.proposed_end);
+    r.details.override = 0;
+    checkCapacity(db, r);
+    deduct(db, r);
+    r.status = "approved";
+    r.details.proposed_start = null;
+    r.details.proposed_end = null;
+  } else if (a === "declineProposal") {
+    if (r.status !== "proposed") throw Error("Cette proposition n\u2019est plus disponible.");
+    r.status = "pending";
+    r.details.proposed_start = null;
+    r.details.proposed_end = null;
+  } else if (a === "cancel") {
+    if (r.status === "approved") r.details.cancel_requested = 1;
+    else if (["pending", "proposed"].includes(r.status)) r.status = "cancelled";
+    else throw Error("Cette demande ne peut plus \xEAtre annul\xE9e.");
+  } else if (a === "confirmCancel") {
+    requireAdmin();
+    if (!r.details.cancel_requested) throw Error("Aucune annulation demand\xE9e.");
+    refund(db, r);
+    r.status = "cancelled";
+    r.details.cancel_requested = 0;
+  } else throw Error("Action inconnue.");
+  queued(db, r, `Aline a mis \xE0 jour votre demande d\u2019absence. Consultez Cong\xE9o pour voir la d\xE9cision ou les nouvelles dates.`);
+}
+async function restoredApi(store2, method, url, body) {
+  let legacy = null;
+  if (url.pathname === "/api/requests" && method === "POST") {
+    const ds = body.type === "recovery" ? [...new Set(body.dates || [])].sort() : null;
+    legacy = { action: "request", employee: body.employeeId, leaveType: body.type, start: body.dateStart || ds?.[0], end: body.dateEnd || ds?.at(-1) };
+  }
+  const route = url.pathname.match(/^\/api\/requests\/([\w-]+)\/(validate|reject)$/);
+  if (route && method === "POST") legacy = { admin: true, action: route[2] === "validate" ? "approve" : "refuse", id: route[1], override: body.override === true };
+  if (url.pathname !== "/api/planning" && !legacy) return null;
+  try {
+    if (legacy) {
+      let result;
+      let idempotent = false;
+      await store2.transact((db) => {
+        idempotent = legacy.action === "approve" && db.requests.some((r) => String(r.id) === String(legacy.id) && r.status === "approved");
+        changePlanning(db, legacy);
+        result = db.requests.find((r) => String(r.id) === String(legacy.id)) || db.requests.at(-1);
+      });
+      return { code: legacy.action === "request" ? 201 : 200, obj: { request: result, idempotent } };
+    }
+    if (method === "GET") {
+      const db = await store2.getDoc();
+      return { code: 200, obj: planningData(db, url.searchParams.get("admin") === "1", url.searchParams.get("employee") || "") };
+    }
+    if (method === "POST") {
+      if (body.action === "sendMail" && (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)) throw Error("L\u2019envoi des e-mails n\u2019est pas encore configur\xE9.");
+      await store2.transact((db) => changePlanning(db, body));
+      let sent = 0;
+      if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+        const db = await store2.getDoc();
+        for (const o of (db.outbox || []).filter((o2) => o2.status === "queued").slice(0, 20)) {
+          const e = db.employees.find((e2) => e2.id === o.employee_id);
+          if (!e?.notify || !e.email) continue;
+          let claimed = false;
+          await store2.transact((s) => {
+            const row = s.outbox.find((x) => x.id === o.id);
+            if (row?.status === "queued") {
+              row.status = "sending";
+              claimed = true;
+            }
+          });
+          if (!claimed) continue;
+          try {
+            const res = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + process.env.RESEND_API_KEY, "Content-Type": "application/json", "Idempotency-Key": o.id }, body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [e.email], subject: o.subject, text: o.body }) });
+            if (!res.ok) throw Error("mail");
+            await store2.transact((s) => {
+              s.outbox.find((x) => x.id === o.id).status = "sent";
+            });
+            sent++;
+          } catch {
+            await store2.transact((s) => {
+              s.outbox.find((x) => x.id === o.id).status = "queued";
+            });
+          }
+        }
+      }
+      return { code: 200, obj: { ok: true, sent } };
+    }
+    return { code: 405, obj: { error: "M\xE9thode non autoris\xE9e." } };
+  } catch (e) {
+    return { code: legacy && legacy.action !== "request" ? 409 : 400, obj: { error: e.message || "Impossible d\u2019enregistrer." } };
   }
 }
 
@@ -5781,11 +6185,12 @@ function cleanDay(d) {
   const pauseStart = d.pauseStart && HHMM.test(d.pauseStart) ? d.pauseStart : null;
   const pauseEnd = d.pauseEnd && HHMM.test(d.pauseEnd) ? d.pauseEnd : null;
   if (!pauseStart !== !pauseEnd) return null;
-  if (pauseStart && pauseEnd <= pauseStart) return null;
+  if (pauseStart && (pauseEnd <= pauseStart || pauseStart < d.start || pauseEnd > d.end)) return null;
   return { worked: true, start: d.start, end: d.end, pauseStart, pauseEnd, open: !!d.open, close: !!d.close };
 }
 function cleanTemplate(t) {
   if (!t || !Array.isArray(t.paire) || !Array.isArray(t.impaire) || t.paire.length !== 7 || t.impaire.length !== 7) return null;
+  if (t.paire[6]?.worked || t.impaire[6]?.worked) return null;
   const paire = t.paire.map(cleanDay), impaire = t.impaire.map(cleanDay);
   return paire.some((d) => !d) || impaire.some((d) => !d) ? null : { paire, impaire };
 }
@@ -5800,6 +6205,8 @@ function bootstrapFor(db, empId) {
   };
 }
 async function handleApi(store2, method, url, body) {
+  const restored = await restoredApi(store2, method, url, body);
+  if (restored) return restored;
   const p = url.pathname;
   let m;
   const db = await store2.getDoc();
@@ -5829,8 +6236,9 @@ async function handleApi(store2, method, url, body) {
   if (m = p.match(/^\/api\/overrides\/([\w-]+)\/(\d{4}-\d{2}-\d{2})$/)) {
     const [, empId, day] = m;
     if (!db.employees.some((e) => e.id === empId)) return { code: 404, obj: { error: "Salari\xE9 introuvable" } };
-    if (!ISODATE.test(day)) return { code: 400, obj: { error: "Date invalide" } };
+    if (!validDate(day)) return { code: 400, obj: { error: "Date invalide" } };
     if (method === "PUT") {
+      if (body?.worked && parseISO(day).getDay() === 0) return { code: 400, obj: { error: "Le dimanche est un jour de fermeture." } };
       const d2 = cleanDay(body);
       if (!d2) return { code: 400, obj: { error: "Journ\xE9e invalide" } };
       await store2.putOverride(empId, day, d2);
@@ -5896,11 +6304,11 @@ async function handleApi(store2, method, url, body) {
     });
     db.requests.filter((r) => r.type === "leave" && r.status === "approved").forEach((r) => {
       const weeks = /* @__PURE__ */ new Set();
-      requestDates(r).forEach((iso2) => {
-        const w = isoWeek(parseISO(iso2));
+      requestDates(r).forEach((iso3) => {
+        const w = isoWeek(parseISO(iso3));
         if (w.year === year) weeks.add(w.week);
       });
-      leavesByEmployee[r.employeeId] = [...weeks].sort((a, b) => a - b);
+      leavesByEmployee[r.employeeId] = [.../* @__PURE__ */ new Set([...leavesByEmployee[r.employeeId] || [], ...weeks])].sort((a, b) => a - b);
     });
     return { code: 200, obj: { year, weeks: isoWeeksInYear(year), leavesByEmployee } };
   }
@@ -5994,23 +6402,36 @@ CREATE TABLE IF NOT EXISTS settings (
   key text PRIMARY KEY,
   value text NOT NULL
 );
+
+-- Additive V1 feature restoration. Existing V2 records and IDs are retained.
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS email text NOT NULL DEFAULT '';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS notify boolean NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS details jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_status_check;
+ALTER TABLE requests ADD CONSTRAINT requests_status_check CHECK(status IN ('pending','approved','rejected','proposed','cancelled'));
+ALTER TABLE recovery_ledger ADD COLUMN IF NOT EXISTS request_ref text;
+CREATE TABLE IF NOT EXISTS outbox(id text PRIMARY KEY,employee_id text NOT NULL,subject text NOT NULL,body text NOT NULL,status text NOT NULL DEFAULT 'queued',created timestamptz NOT NULL DEFAULT now());
 ` : null;
 var schemaReady = null;
 async function store() {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      const c = await pool.connect();
+      try {
+        await createPgStore(c, { seedIfEmpty: process.env.CONGEO_SEED_DEMO === "1", schemaSql: SCHEMA_SQL });
+      } finally {
+        c.release();
+      }
+    })().catch((e) => {
+      schemaReady = null;
+      throw e;
+    });
+  }
+  await schemaReady;
   const client = await pool.connect();
   try {
-    if (!schemaReady) {
-      schemaReady = (async () => {
-        const c = await pool.connect();
-        try {
-          await createPgStore(c, { seedIfEmpty: process.env.CONGEO_SEED_DEMO === "1", schemaSql: SCHEMA_SQL });
-        } finally {
-          c.release();
-        }
-      })();
-    }
-    await schemaReady;
-    return { client, storeApi: await createPgStore(client, { seedIfEmpty: false, schemaSql: SCHEMA_SQL, applySchema: false }) };
+    return { client, storeApi: await createPgStore(client, { seedIfEmpty: false, applySchema: false }) };
   } catch (e) {
     client.release();
     throw e;
@@ -6040,14 +6461,22 @@ var function_default = {
         body = {};
       }
     }
-    const { client, storeApi } = await store();
-    let out;
+    let client;
     try {
-      out = await handleApi(storeApi, request.method, url, body);
-    } finally {
-      client.release();
+      const opened = await store();
+      client = opened.client;
+      const storeApi = opened.storeApi;
+      let out;
+      try {
+        out = await handleApi(storeApi, request.method, url, body);
+      } finally {
+        client.release();
+      }
+      return Response.json(out.obj, { status: out.code, headers });
+    } catch (e) {
+      console.error("Cong\xE9o API", e.message);
+      return Response.json({ error: "Impossible d\u2019enregistrer. Actualisez le planning et r\xE9essayez." }, { status: 500, headers });
     }
-    return Response.json(out.obj, { status: out.code, headers });
   }
 };
 export {

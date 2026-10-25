@@ -14,7 +14,7 @@ export function leaveDates(req) {
   return out;
 }
 export function requestDates(req) {
-  return req.type === "leave" ? leaveDates(req) : req.dates;
+  return req.type === "leave" ? leaveDates(req) : [...new Set(req.dates || [])];
 }
 // Heures planifiees sur les jours d'une demande de recuperation.
 export function recoveryPlannedMinutes(req, templates, overrides) {

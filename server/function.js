@@ -18,18 +18,13 @@ let schemaReady = null;
 async function store() {
   // Une connexion dédiée par requête : les transactions (BEGIN/COMMIT avec
   // verrou de ligne) de db-pg.js exigent une connexion stable, pas le pool.
-  const client = await pool.connect();
-  try {
-    if (!schemaReady) {
-      schemaReady = (async () => {
-        const c = await pool.connect();
-        try { await createPgStore(c, { seedIfEmpty: process.env.CONGEO_SEED_DEMO === "1", schemaSql: SCHEMA_SQL }); }
-        finally { c.release(); }
-      })();
-    }
-    await schemaReady;
-    return { client, storeApi: await createPgStore(client, { seedIfEmpty: false, schemaSql: SCHEMA_SQL, applySchema: false }) };
-  } catch (e) { client.release(); throw e; }
+  if (!schemaReady) {
+    schemaReady=(async()=>{const c=await pool.connect();try{await createPgStore(c,{seedIfEmpty:process.env.CONGEO_SEED_DEMO==='1',schemaSql:SCHEMA_SQL});}finally{c.release();}})().catch(e=>{schemaReady=null;throw e;});
+  }
+  await schemaReady;
+  const client=await pool.connect();
+  try{return {client,storeApi:await createPgStore(client,{seedIfEmpty:false,applySchema:false})};}catch(e){client.release();throw e;}
+
 }
 
 export default {
@@ -53,7 +48,9 @@ export default {
     if (request.method === "POST" || request.method === "PUT") {
       try { body = await request.json(); } catch { body = {}; }
     }
-    const { client, storeApi } = await store();
+    let client;
+    try {
+    const opened = await store();client=opened.client;const storeApi=opened.storeApi;
     let out;
     try {
       out = await handleApi(storeApi, request.method, url, body);
@@ -61,5 +58,6 @@ export default {
       client.release();
     }
     return Response.json(out.obj, { status: out.code, headers });
+    }catch(e){console.error("Congéo API",e.message);return Response.json({error:"Impossible d’enregistrer. Actualisez le planning et réessayez."},{status:500,headers});}
   },
 };

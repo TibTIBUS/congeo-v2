@@ -1,42 +1,16 @@
-# Mise en ligne — options et limites
+# Déploiement Congéo V2
 
-## Option A — Démo statique sur GitHub Pages (gratuit, choisi pour le test)
+L'interface est publiée sur GitHub Pages à chaque push validé sur main, après les tests et la compilation.
 
-Ce que GitHub couvre gratuitement (vérifié sur docs.github.com, 25/10/2026) :
+- Interface : https://tibtibus.github.io/congeo-v2/
+- Administration : https://tibtibus.github.io/congeo-v2/#/admin
+- API : URL publique dans public/config.js, Neon Function congeov2 sur le projet proud-river-20239760, branche br-solitary-union-ba4ax9oj, Francfort.
+- La V1 reste sur son dépôt et son projet Neon distincts.
 
-- Dépôt git, public ou privé : gratuit et illimité.
-- GitHub Pages : **gratuit uniquement pour un dépôt public** (plan GitHub Free).
-  Le code et la démo sont donc visibles par tout le monde.
-- GitHub Actions : gratuit pour les dépôts publics.
+Node 24 : npm ci, npm test, npm run build, npm run build:function. Déployer dist-function/index.mjs comme index.mjs dans l'archive de la Neon Function. Les variables d'environnement omises sont conservées.
 
-Pages héberge uniquement du **statique** (HTML/CSS/JS) : c'est la **démo
-navigateur** (données fictives, localStorage) qui est publiée, **pas** le
-serveur. **Limite : chaque appareil garde ses propres données fictives, rien
-n'est partagé entre utilisateurs.** Le workflow `.github/workflows/pages.yml`
-construit et publie la démo à chaque push sur `main`.
+Le schéma schema.sql est appliqué avant les premières requêtes de chaque instance. Les migrations préservent les identifiants et les enregistrements existants ; tester les évolutions sur une branche isolée avant la branche principale.
 
-Mise en route (une fois) : créer le dépôt public, pousser, puis
-Settings → Pages → Source : **GitHub Actions**.
-La démo est ensuite sur `https://tibtibus.github.io/congeo-v2/`.
+Les notifications e-mail nécessitent RESEND_API_KEY et EMAIL_FROM côté serveur. Sans ces variables, les préférences sont enregistrées et l'interface indique que l'envoi n'est pas activé.
 
-Limites Pages : pas de serveur Node, pas de base ; conditions GitHub : Pages
-n'est pas destiné à faire tourner un service commercial. Pour une démo fictive
-c'est conforme.
-
-## Option B — Sauvegarde partagée (comme la V1 : Pages + Neon)
-
-La V1 utilise déjà ce montage : Pages (interface) + projet Neon (base PostgreSQL
-partagée + API déployée en Neon Function, région Francfort). La V2 peut le
-reprendre sur un **projet Neon séparé** (la V1 et sa base restent intouchées) :
-
-- Console Neon du compte (25/10/2026) : **Free Plan, 0 $/mois** — par projet :
-  1 Go stockage, 100 h de calcul, 10 branches. Jusqu'à 100 projets.
-- Neon Functions (Node.js 24, disponible à Francfort) : **gratuit pendant la
-  bêta** (tarif annoncé ensuite : 0,10 $/CU-h en plan Launch).
-- Le serveur V2 (`server/`) est prêt pour PostgreSQL (`DATABASE_URL`) ; la
-  persistance est vérifiée localement contre un vrai Postgres éphémère
-  (test de concurrence inclus). L'adaptation en Neon Function suit le contrat
-  `export default { fetch }` (comme la V1).
-
-Créer ce projet Neon = nouveau service externe : accord séparé requis avant
-toute création.
+L'accès sans compte reste un choix explicite : le nom est déclaré et l'administration est séparée, sans authentification.

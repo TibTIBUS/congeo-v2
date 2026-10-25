@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { isoWeek, weekDates, parityOf, fmtRange, toISODate, addDays, mondayOfISOWeek, DAY_NAMES, isoWeeksInYear, parseISO, fmtDate } from "../domain/dates.js";
 
 const fmtDateFr = (iso) => fmtDate(parseISO(iso));
-import { STORE_HOURS_LABEL, getWeekPlan, plannedMinutes, weekCoverage, fmtHours, SHOP_DAYS } from "../domain/planning.js";
+import { STORE_HOURS_LABEL, effectiveWeekPlan, getWeekPlan, plannedMinutes, weekCoverage, fmtHours, SHOP_DAYS } from "../domain/planning.js";
 import { recoveryBalance } from "../store.js";
 import { checkRecoveryValidation, requestDates, recoveryPlannedMinutes } from "../domain/requests.js";
 import { buildMatrix, buildXlsx } from "../domain/exportXlsx.js";
@@ -28,7 +28,7 @@ export default function AdminView({ data, actions, fictif = false }) {
   </div>;
 }
 
-function Planning({ data, actions, fictif }) {
+export function Planning({ data, actions, fictif }) {
   const [wk, setWk] = useState(() => isoWeek(new Date()));
   const [edit, setEdit] = useState(null); // {empId, iso, day}
   const [recForm, setRecForm] = useState(false);
@@ -36,7 +36,7 @@ function Planning({ data, actions, fictif }) {
   const [recH, setRecH] = useState(""); const [recWhy, setRecWhy] = useState("");
   const dates = weekDates(wk.year, wk.week);
   const plansBy = {};
-  data.employees.forEach((e) => { plansBy[e.id] = getWeekPlan(data.templates, data.overrides, e.id, wk.year, wk.week); });
+  data.employees.forEach((e) => { plansBy[e.id] = effectiveWeekPlan(data, e.id, wk.year, wk.week); });
   const cov = weekCoverage(plansBy);
   const leaveSet = {}; data.employees.forEach((e) => { leaveSet[e.id] = new Set(); });
   data.requests.filter((r) => r.type === "leave" && r.status === "approved")
@@ -54,7 +54,7 @@ function Planning({ data, actions, fictif }) {
   return <div>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
       <div>
-        <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>PLANNING · L'ÉCHOPPE DU MARCHÉ{fictif ? " (FICTIF)" : ""}</div>
+        <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>PLANNING · LA HAYE{fictif ? " (FICTIF)" : ""}</div>
         <h1>Semaine {parityOf(wk)} · {fmtRange(dates[0])}</h1>
       </div>
       <WeekNav onPrev={() => move(-1)} onNext={() => move(1)}><PariteBadge parite={parityOf(wk)} week={wk.week} /></WeekNav>
@@ -85,19 +85,6 @@ function Planning({ data, actions, fictif }) {
     <div className="mut" style={{ fontSize: 12, marginTop: 8 }}>
       Magasin : {STORE_HOURS_LABEL} · <span className="badgeO">O</span> ouvre le magasin · <span className="badgeF">F</span> ferme le magasin (coches indicatives, sans contrôle à la minute) · Couverture : au moins 2 salariés à l'ouverture et 2 à la fermeture, alerte sans blocage · Dimanche : magasin fermé · Clique une case pour ajuster la journée.
     </div>
-
-    <h2>Heures à récupérer</h2>
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-      {data.employees.map((e) => <span key={e.id} className="chip"><span className="dot" style={{ background: e.color }} /><b>{e.name}</b> <span style={{ fontWeight: 800, color: "var(--pri)" }}>{fmtHours(recoveryBalance(data, e.id))}</span></span>)}
-      <button className="btn ghost" onClick={() => setRecForm(!recForm)}>+ Saisir des heures à récupérer</button>
-    </div>
-    {recForm && <div className="card" style={{ padding: 14, marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <select value={recEmp} onChange={(e) => setRecEmp(e.target.value)}>{data.employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-      <input style={{ width: 90 }} placeholder="Heures" value={recH} onChange={(e) => setRecH(e.target.value)} />
-      <input style={{ width: 240 }} placeholder="Motif (ex. heures supplémentaires de mars)" value={recWhy} onChange={(e) => setRecWhy(e.target.value)} />
-      <button className="btn" onClick={saveRec}>Enregistrer</button>
-      <span className="mut" style={{ fontSize: 11.5 }}>Heures supplémentaires déjà effectuées par le salarié.</span>
-    </div>}
 
     {edit && <DayEditor data={data} actions={actions} edit={edit} onClose={() => setEdit(null)} />}
   </div>;
@@ -134,13 +121,14 @@ function DayEditor({ data, actions, edit, onClose }) {
   </div>;
 }
 
-function Gabarits({ data, actions }) {
+export function Gabarits({ data, actions }) {
   const [empId, setEmpId] = useState(data.employees[0].id);
-  const [tpl, setTpl] = useState(() => JSON.parse(JSON.stringify(data.templates[empId])));
-  const [saved, setSaved] = useState(false);
-  const pick = (id) => { setEmpId(id); setTpl(JSON.parse(JSON.stringify(data.templates[id]))); setSaved(false); };
+  const normalized=(id)=>({paire:Array.from({length:7},(_,i)=>({...OFF,...data.templates[id]?.paire?.[i]})),impaire:Array.from({length:7},(_,i)=>({...OFF,...data.templates[id]?.impaire?.[i]}))});
+  const [tpl, setTpl] = useState(() => normalized(empId));
+  const [saved, setSaved] = useState(false);const [saveErr,setSaveErr]=useState("");
+  const pick = (id) => { setEmpId(id); setTpl(normalized(id)); setSaved(false); };
   const setDay = (par, i, k, v) => { const t = { ...tpl }; t[par] = t[par].slice(); t[par][i] = { ...t[par][i], [k]: v }; setTpl(t); setSaved(false); };
-  const save = async () => { await actions.saveTemplate(empId, tpl); setSaved(true); };
+  const save = async () => {try{await actions.saveTemplate(empId,tpl);setSaved(true);setSaveErr("");}catch(e){setSaveErr(e.message);}};
   const emp = data.employees.find((e) => e.id === empId);
   const Panel = ({ par, badge }) => <div className="card" style={{ flex: 1, overflow: "hidden" }}>
     <div style={{ padding: "12px 16px", background: "var(--soft)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -149,7 +137,7 @@ function Gabarits({ data, actions }) {
     {DAY_NAMES.map((dn, i) => {
       const d = tpl[par][i];
       return <div key={i} className={`tplrow ${d.worked ? "" : "off"}`}>
-        <input type="checkbox" checked={d.worked} onChange={(e) => setDay(par, i, "worked", e.target.checked)} />
+        <input type="checkbox" checked={d.worked} disabled={i===6} onChange={(e) => setDay(par, i, "worked", e.target.checked)} />
         <span style={{ fontWeight: 600 }}>{dn}</span>
         {d.worked ? <span style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
           <input type="time" value={d.start || ""} onChange={(e) => setDay(par, i, "start", e.target.value)} />
@@ -168,9 +156,9 @@ function Gabarits({ data, actions }) {
       <select value={empId} onChange={(e) => pick(e.target.value)}>{data.employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
     </div>
     <div className="mut" style={{ fontSize: 12.5, marginBottom: 12 }}>Le gabarit appliqué suit la parité du numéro de semaine ISO, même au changement d'année. Le planning de chaque semaine est pré-rempli à partir de ces gabarits ; l'admin peut ensuite ajuster jour par jour.</div>
-    <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}><Panel par="paire" badge="P" /><Panel par="impaire" badge="I" /></div>
+    <div className="template-panels" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}><Panel par="paire" badge="P" /><Panel par="impaire" badge="I" /></div>
     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14, alignItems: "center" }}>
-      {saved && <span style={{ color: "var(--ok)", fontWeight: 700, fontSize: 13 }}>Gabarits enregistrés ✓</span>}
+      {saveErr&&<p role="alert" className="notice">{saveErr}</p>}{saved && <span style={{ color: "var(--ok)", fontWeight: 700, fontSize: 13 }}>Gabarits enregistrés ✓</span>}
       <button className="btn" onClick={save}>Enregistrer les gabarits</button>
     </div>
   </div>;
@@ -239,7 +227,7 @@ function segmentCells(year, weeks) {
   return out;
 }
 
-function Export({ data }) {
+export function Export({ data }) {
   const [year, setYear] = useState(2027);
   const [busy, setBusy] = useState(false);
   const leavesByEmployee = {};
@@ -269,7 +257,7 @@ function Export({ data }) {
         <button className="btn" onClick={dl} disabled={busy}>⤓ Exporter en Excel (.xlsx)</button>
       </div>
     </div>
-    <div className="mut" style={{ fontSize: 12.5, margin: "8px 0 12px" }}>Colonnes teintées : vacances scolaires zone B — académie de Caen (calendriers officiels 2025-2026 à 2027-2028, Ministère de l'Éducation nationale). Cases colorées : congés validés. Données fictives.</div>
+    <div className="mut" style={{ fontSize: 12.5, margin: "8px 0 12px" }}>Colonnes teintées : vacances scolaires zone B — académie de Caen (calendriers officiels 2025-2026 à 2027-2028, Ministère de l'Éducation nationale). Cases colorées : congés validés.</div>
     <div className="card" style={{ padding: 12, overflow: "auto" }}>
       <table className="xprev">
         <thead>
