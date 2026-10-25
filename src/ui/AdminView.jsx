@@ -21,14 +21,14 @@ export default function AdminView({ data, actions, fictif = false }) {
       {[["planning", "Planning"], ["gabarits", "Semaines paire/impaire"], ["demandes", "Demandes"], ["export", "Export annuel"]].map(([k, l]) =>
         <button key={k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
     </div>
-    {tab === "planning" && <Planning data={data} actions={actions} />}
+    {tab === "planning" && <Planning data={data} actions={actions} fictif={fictif} />}
     {tab === "gabarits" && <Gabarits data={data} actions={actions} />}
     {tab === "demandes" && <Demandes data={data} actions={actions} />}
     {tab === "export" && <Export data={data} />}
   </div>;
 }
 
-function Planning({ data, actions }) {
+function Planning({ data, actions, fictif }) {
   const [wk, setWk] = useState(() => isoWeek(new Date()));
   const [edit, setEdit] = useState(null); // {empId, iso, day}
   const [recForm, setRecForm] = useState(false);
