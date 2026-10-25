@@ -130,7 +130,23 @@ export function Gabarits({ data, actions }) {
   const setDay = (par, i, k, v) => { const t = { ...tpl }; t[par] = t[par].slice(); t[par][i] = { ...t[par][i], [k]: v }; setTpl(t); setSaved(false); };
   const save = async () => {try{await actions.saveTemplate(empId,tpl);setSaved(true);setSaveErr("");}catch(e){setSaveErr(e.message);}};
   const emp = data.employees.find((e) => e.id === empId);
-  const Panel = ({ par, badge }) => <div className="card" style={{ flex: 1, overflow: "hidden" }}>
+
+  return <div>
+    <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>HORAIRES HABITUELS</div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", margin: "6px 0 12px" }}>
+      <h1>Semaines paire et impaire — {emp.name}</h1>
+      <select value={empId} onChange={(e) => pick(e.target.value)}>{data.employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+    </div>
+    <div className="mut" style={{ fontSize: 12.5, marginBottom: 12 }}>Le gabarit appliqué suit la parité du numéro de semaine ISO, même au changement d'année. Le planning de chaque semaine est pré-rempli à partir de ces gabarits ; l'admin peut ensuite ajuster jour par jour.</div>
+    <div className="template-panels" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}><TemplatePanel par="paire" badge="P" tpl={tpl} setDay={setDay}/><TemplatePanel par="impaire" badge="I" tpl={tpl} setDay={setDay}/></div>
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14, alignItems: "center" }}>
+      {saveErr&&<p role="alert" className="notice">{saveErr}</p>}{saved && <span style={{ color: "var(--ok)", fontWeight: 700, fontSize: 13 }}>Gabarits enregistrés ✓</span>}
+      <button className="btn" onClick={save}>Enregistrer les gabarits</button>
+    </div>
+  </div>;
+}
+
+function TemplatePanel({par,badge,tpl,setDay}){return (<div className="card" style={{ flex: 1, overflow: "hidden" }}>
     <div style={{ padding: "12px 16px", background: "var(--soft)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <b>Semaine {par}</b><span className="parite">{badge}</span>
     </div>
@@ -144,25 +160,11 @@ export function Gabarits({ data, actions }) {
           <input type="time" value={d.end || ""} onChange={(e) => setDay(par, i, "end", e.target.value)} />
           <label className="mut" style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }}>pause <input type="time" value={d.pauseStart || ""} onChange={(e) => setDay(par, i, "pauseStart", e.target.value || null)} /> → <input type="time" value={d.pauseEnd || ""} onChange={(e) => setDay(par, i, "pauseEnd", e.target.value || null)} /></label>
         </span> : <span className="mut">Repos</span>}
-        <label style={{ fontSize: 11.5 }}><input type="checkbox" checked={d.open} disabled={!d.worked} onChange={(e) => setDay(par, i, "open", e.target.checked)} /> Ouverture</label>
-        <label style={{ fontSize: 11.5 }}><input type="checkbox" checked={d.close} disabled={!d.worked} onChange={(e) => setDay(par, i, "close", e.target.checked)} /> Fermeture</label>
+<div className="day-flags">        <label style={{ fontSize: 11.5 }}><input type="checkbox" checked={d.open} disabled={!d.worked} onChange={(e) => setDay(par, i, "open", e.target.checked)} /> Ouverture</label>
+        <label style={{ fontSize: 11.5 }}><input type="checkbox" checked={d.close} disabled={!d.worked} onChange={(e) => setDay(par, i, "close", e.target.checked)} /> Fermeture</label></div>
       </div>;
     })}
-  </div>;
-  return <div>
-    <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>HORAIRES HABITUELS</div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", margin: "6px 0 12px" }}>
-      <h1>Semaines paire et impaire — {emp.name}</h1>
-      <select value={empId} onChange={(e) => pick(e.target.value)}>{data.employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-    </div>
-    <div className="mut" style={{ fontSize: 12.5, marginBottom: 12 }}>Le gabarit appliqué suit la parité du numéro de semaine ISO, même au changement d'année. Le planning de chaque semaine est pré-rempli à partir de ces gabarits ; l'admin peut ensuite ajuster jour par jour.</div>
-    <div className="template-panels" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}><Panel par="paire" badge="P" /><Panel par="impaire" badge="I" /></div>
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14, alignItems: "center" }}>
-      {saveErr&&<p role="alert" className="notice">{saveErr}</p>}{saved && <span style={{ color: "var(--ok)", fontWeight: 700, fontSize: 13 }}>Gabarits enregistrés ✓</span>}
-      <button className="btn" onClick={save}>Enregistrer les gabarits</button>
-    </div>
-  </div>;
-}
+  </div>);}
 
 function Demandes({ data, actions }) {
   const pending = data.requests.filter((r) => r.status === "pending");

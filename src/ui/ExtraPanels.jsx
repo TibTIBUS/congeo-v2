@@ -13,11 +13,11 @@ export default function ExtraPanels({tab,admin,actor,onChanged}){
  const write=async(path,method,body)=>{try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});await refresh();onChanged?.();}catch(e){setErr(e.message);throw e;}};
  const actions={saveTemplate:(emp,tpl)=>write('/api/templates/'+emp,'PUT',tpl),saveOverride:(emp,iso,day)=>write(`/api/overrides/${emp}/${iso}`,'PUT',day),resetOverride:(emp,iso)=>write(`/api/overrides/${emp}/${iso}`,'DELETE')};
  if(!admin&&!actor)return <div className="notice">Sélectionnez votre nom en haut de l’écran pour voir vos horaires.</div>;
- if(err)return <div role="alert" className="notice">{err}<button className="textbtn" onClick={refresh}>Réessayer</button></div>;
+ if(err&&!data)return <div role="alert" className="notice">{err}<button className="textbtn" onClick={refresh}>Réessayer</button></div>;
  if(!data)return <div className="panel">Chargement…</div>;
  const active={...data,employees:data.employees.filter(e=>e.active!==false)};
  if(!active.employees.length)return <div className="panel">Ajoutez d’abord les salariés dans l’onglet Équipe.</div>;
- return <div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div>;
+ return <>{err&&<div role="alert" className="notice">{err}</div>}<div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div></>;
 }
 function MySchedule({data,actor}){
  const [wk,setWk]=useState(()=>isoWeek(new Date()));const emp=data.employees.find(e=>e.id===actor);if(!emp)return <div className="notice">Ce salarié n’est plus actif.</div>;
