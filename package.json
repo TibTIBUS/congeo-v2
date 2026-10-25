@@ -1,0 +1,33 @@
+{
+  "name": "congeo-v2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5199 --strictPort",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:ui": "node tests/ui.mjs",
+    "server": "node server/index.js",
+    "test:e2e": "node tests/e2e.mjs",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@fontsource/nunito": "^5.1.0",
+    "jszip": "^3.10.1",
+    "pg": "^8.23.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "pg-mem": "^3.0.14",
+    "playwright-core": "^1.64.1",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

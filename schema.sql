@@ -1,0 +1,87 @@
+-- Congéo V2 — schéma de la base Postgres DÉDIÉE (préparation locale, non déployée).
+-- Séparée de la V1 : aucune table partagée, aucune écriture V1.
+-- La visibilité "salarié = son planning seul" sera appliquée côté serveur
+-- (authentification + policies RLS) avant tout usage réel — non couverte par ce prototype.
+
+CREATE TABLE IF NOT EXISTS employees (
+  id          text PRIMARY KEY,
+  name        text NOT NULL,
+  role        text,
+  color       text NOT NULL DEFAULT '#2f6fdb'
+);
+
+-- Gabarits d'horaires habituels : une ligne par salarié × parité × jour (0=lundi..6=dimanche).
+-- Le gabarit appliqué suit la parité du numéro de semaine ISO, même au changement d'année.
+CREATE TABLE IF NOT EXISTS templates (
+  employee_id text NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  parity      text NOT NULL CHECK (parity IN ('paire','impaire')),
+  weekday     smallint NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+  worked      boolean NOT NULL DEFAULT false,
+  start_time  time,
+  end_time    time,
+  pause_start time,          -- pause du midi : horaire de début
+  pause_end   time,          -- et horaire de fin (décision du 25 oct, vocal 11h49)
+  is_open     boolean NOT NULL DEFAULT false,  -- coche "Ouverture"
+  is_close    boolean NOT NULL DEFAULT false,  -- coche "Fermeture" (cumulable : O et F le même jour)
+  PRIMARY KEY (employee_id, parity, weekday)
+);
+
+-- Ajustements jour par jour du planning généré depuis les gabarits.
+CREATE TABLE IF NOT EXISTS plan_overrides (
+  employee_id text NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  day         date NOT NULL,
+  worked      boolean NOT NULL,
+  start_time  time,
+  end_time    time,
+  pause_start time,          -- pause du midi : horaire de début
+  pause_end   time,          -- et horaire de fin (décision du 25 oct, vocal 11h49)
+  is_open     boolean NOT NULL DEFAULT false,
+  is_close    boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (employee_id, day)
+);
+
+-- Demandes : congés (plage) ou récupération (jours ponctuels).
+-- Pas de décompte de jours de congés (retiré le 25 oct 2026).
+CREATE TABLE IF NOT EXISTS requests (
+  id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  employee_id   text NOT NULL REFERENCES employees(id),
+  type          text NOT NULL CHECK (type IN ('leave','recovery')),
+  date_start    date,          -- leave : début de plage incluse
+  date_end      date,          -- leave : fin de plage incluse
+  dates         date[],        -- recovery : jours posés
+  status        text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  deducted_min  integer,       -- recovery : heures décomptées à la validation
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  decided_at    timestamptz,
+  CHECK ((type = 'leave'    AND date_start IS NOT NULL AND date_end IS NOT NULL)
+      OR (type = 'recovery' AND dates IS NOT NULL))
+);
+
+-- Heures à récupérer : saisies admin (positif) et décomptes à la validation (négatif).
+-- Règle prudente retenue : validation bloquée si le solde ne couvre pas les heures
+-- prévues au planning des jours posés (aucune heure perdue, pas de découvert).
+CREATE TABLE IF NOT EXISTS recovery_ledger (
+  id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  employee_id text NOT NULL REFERENCES employees(id),
+  delta_min   integer NOT NULL,
+  reason      text,
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ON recovery_ledger (employee_id);
+CREATE INDEX ON requests (employee_id, status);
+
+-- Comptes et sessions (vraie V2 authentifiée). Mots de passe hachés (scrypt).
+CREATE TABLE IF NOT EXISTS app_users (
+  id          text PRIMARY KEY,
+  email       text NOT NULL UNIQUE,
+  password    text NOT NULL,   -- haché, jamais en clair
+  name        text NOT NULL,
+  role        text NOT NULL CHECK (role IN ('admin','employee')),
+  employee_id text REFERENCES employees(id)  -- NULL pour l'admin
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token      text PRIMARY KEY,
+  user_id    text NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
