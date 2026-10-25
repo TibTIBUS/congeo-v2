@@ -18,6 +18,7 @@ import { getWeekPlan } from "../src/domain/planning.js";
 import { isoWeek, isoWeeksInYear, parseISO } from "../src/domain/dates.js";
 import { requestDates, leaveDates } from "../src/domain/requests.js";
 import { leaveBlockedReason } from "../src/domain/blocks.js";
+import { applyDutyAssignments } from "../src/domain/duties.js";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISODATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,6 +62,11 @@ export async function handleApi(store, method, url, body) {
   const p = url.pathname;
   let m;
 
+  if(p==='/api/duties'&&method==='PUT'){
+    try{let updated=0;await store.transact(db=>{updated=applyDutyAssignments(db,body);});return {code:200,obj:{ok:true,updated}};}
+    catch(e){return {code:400,obj:{error:e.message||'Impossible d’enregistrer les affectations.'}};}
+  }
+
   const db = await store.getDoc();
 
   if (p === "/api/employees" && method === "GET") {
@@ -89,8 +95,18 @@ export async function handleApi(store, method, url, body) {
     if (!db.employees.some((e) => e.id === m[1])) return { code: 404, obj: { error: "Salarié introuvable" } };
     const tpl = cleanTemplate(body);
     if (!tpl) return { code: 400, obj: { error: "Gabarit invalide (7 jours par parité, horaires HH:MM cohérents)" } };
-    await store.putTemplate(m[1], tpl);
-    return { code: 200, obj: { template: tpl } };
+    try{
+      await store.transact(current=>{
+        if(body.original!==undefined){
+          const emptyWeek=()=>Array.from({length:7},()=>({worked:false}));
+          const currentTemplate=cleanTemplate(current.templates[m[1]]||{paire:emptyWeek(),impaire:emptyWeek()});
+          const original=cleanTemplate(body.original);
+          if(!original||JSON.stringify(original)!==JSON.stringify(currentTemplate))throw Error('Les horaires ou les affectations ont changé. Rechargez cette semaine type avant d’enregistrer.');
+        }
+        current.templates[m[1]]=tpl;
+      });
+      return { code: 200, obj: { template: tpl } };
+    }catch(e){return {code:409,obj:{error:e.message||'Impossible d’enregistrer les horaires.'}};}
   }
 
   if ((m = p.match(/^\/api\/overrides\/([\w-]+)\/(\d{4}-\d{2}-\d{2})$/))) {

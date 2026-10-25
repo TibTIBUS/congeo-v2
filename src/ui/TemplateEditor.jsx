@@ -11,15 +11,15 @@ function TimeField({day,index,field,label,parity,onChange}){
  return <label><span>{label}</span><input type="time" aria-label={`${DAY_NAMES_LONG[index]} · ${label} · semaine ${parity}`} value={day[field]||''} onChange={event=>onChange(index,{[field]:event.target.value||null})} required/></label>;
 }
 
-export default function TemplateEditor({data,actions}){
+export default function TemplateEditor({data,actions,onReload=async()=>true}){
  const [empId,setEmpId]=useState(data.employees[0].id),[parity,setParity]=useState('paire');
  // Keep each employee's unfinished entries when the manager switches names or polling refreshes data.
  const [drafts,setDrafts]=useState({}),[saving,setSaving]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- const template=drafts[empId]||clone(data.templates[empId]),other=parity==='paire'?'impaire':'paire';
+ const template=drafts[empId]?.template||clone(data.templates[empId]),other=parity==='paire'?'impaire':'paire';
  const dirty=!!drafts[empId],employee=data.employees.find(e=>e.id===empId);
  const week=isoWeek(new Date());let exampleMonday=weekDates(week.year,week.week)[0];
  while(parityOf(isoWeek(exampleMonday))!==parity)exampleMonday=addDays(exampleMonday,7);
- const update=change=>{setDrafts(previous=>({...previous,[empId]:change(clone(previous[empId]||data.templates[empId]))}));setError('');setMessage('');};
+ const update=change=>{setDrafts(previous=>{const entry=previous[empId]||{template:clone(data.templates[empId]),original:clone(data.templates[empId])};return {...previous,[empId]:{...entry,template:change(clone(entry.template))}};});setError('');setMessage('');};
  const setDay=(index,change)=>update(t=>{t[parity][index]={...t[parity][index],...change};return t;});
  const setWorked=(index,worked)=>{
   const d=template[parity][index];
@@ -36,10 +36,15 @@ export default function TemplateEditor({data,actions}){
   }
   setSaving(true);
   try{
-   await actions.saveTemplate(empId,template);
+   await actions.saveTemplate(empId,template,drafts[empId]?.original);
    setDrafts(previous=>{const next={...previous};delete next[empId];return next;});
    setMessage(`Les horaires de ${employee.name} sont enregistrés.`);
   }catch(e){setError(e.message||'Impossible d’enregistrer. Vos saisies sont conservées.');}
+  finally{setSaving(false);}
+ }
+ async function reloadTemplate(){
+  setSaving(true);
+  try{if(await onReload()===false)return;setDrafts(previous=>{const next={...previous};delete next[empId];return next;});setError('');setMessage('Les horaires enregistrés ont été rechargés.');}
   finally{setSaving(false);}
  }
  return <form className="template-editor" onSubmit={save} noValidate>
@@ -66,6 +71,6 @@ export default function TemplateEditor({data,actions}){
    <p className="template-role-hint">Cochez les personnes qui assurent l’ouverture ou la fermeture. Les jours de repos ne sont pas comptés.</p>
    <div className="template-actions"><button type="button" className="btn secondary" onClick={copyWeek}><Copy size={17} aria-hidden="true"/>Copier vers la semaine {other}</button><button type="submit" className="btn" disabled={!dirty}><Check size={18} aria-hidden="true"/>{saving?'Enregistrement…':'Enregistrer les horaires'}</button></div>
   </fieldset>
-  {error&&<p className="template-error" role="alert">{error}</p>}{message&&<p className="template-message" role="status">{message}</p>}
+  {error&&<div className="template-error" role="alert"><p>{error}</p><button type="button" className="textbtn" disabled={saving} onClick={reloadTemplate}>Recharger les horaires enregistrés</button></div>}{message&&<p className="template-message" role="status">{message}</p>}
  </form>;
 }

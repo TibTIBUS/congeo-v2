@@ -6196,6 +6196,33 @@ function leaveBlockedReason(dayISO, blocks = [], firstWeek = true) {
   return b ? b.label : null;
 }
 
+// src/domain/duties.js
+var dutyState = (day) => ({ worked: !!day?.worked, open: !!day?.open, close: !!day?.close });
+var sameDutyState = (a, b) => ["worked", "open", "close"].every((key) => a?.[key] === b?.[key]);
+function applyDutyAssignments(db, payload) {
+  if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+  const { parity, changes } = payload;
+  if (!["paire", "impaire"].includes(parity) || !Array.isArray(changes) || changes.length > db.employees.length * 6) throw Error("R\xE9partition des ouvertures et fermetures invalide.");
+  const seen = /* @__PURE__ */ new Set(), updates = [];
+  for (const change of changes) {
+    const employee = db.employees.find((e) => e.id === change?.employeeId && e.active !== false), weekday = change?.weekday;
+    if (!employee || !Number.isInteger(weekday) || weekday < 0 || weekday > 5) throw Error("Choisissez un salari\xE9 actif et un jour du lundi au samedi.");
+    const key = employee.id + "|" + weekday;
+    if (seen.has(key)) throw Error("Une journ\xE9e ne peut appara\xEEtre qu\u2019une fois.");
+    seen.add(key);
+    if (["open", "close"].some((k) => typeof change[k] !== "boolean") || ["worked", "open", "close"].some((k) => typeof change.original?.[k] !== "boolean")) throw Error("Cases Ouverture et Fermeture invalides.");
+    const day = db.templates[employee.id]?.[parity]?.[weekday];
+    if (!sameDutyState(dutyState(day), change.original)) throw Error(`La journ\xE9e de ${employee.name} a chang\xE9. Rechargez les affectations avant d\u2019enregistrer.`);
+    if (!day || !day.worked && (change.open || change.close)) throw Error(`${employee.name} est en repos sur cette journ\xE9e. Modifiez d\u2019abord ses horaires dans Semaines types.`);
+    updates.push({ day, open: change.open, close: change.close });
+  }
+  for (const update of updates) {
+    update.day.open = update.open;
+    update.day.close = update.close;
+  }
+  return updates.length;
+}
+
 // server/index.js
 var HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 var ISODATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -6230,6 +6257,17 @@ async function handleApi(store2, method, url, body) {
   if (restored) return restored;
   const p = url.pathname;
   let m;
+  if (p === "/api/duties" && method === "PUT") {
+    try {
+      let updated = 0;
+      await store2.transact((db2) => {
+        updated = applyDutyAssignments(db2, body);
+      });
+      return { code: 200, obj: { ok: true, updated } };
+    } catch (e) {
+      return { code: 400, obj: { error: e.message || "Impossible d\u2019enregistrer les affectations." } };
+    }
+  }
   const db = await store2.getDoc();
   if (p === "/api/employees" && method === "GET") {
     return { code: 200, obj: { employees: db.employees.map((e) => ({ id: e.id, name: e.name })) } };
@@ -6251,8 +6289,20 @@ async function handleApi(store2, method, url, body) {
     if (!db.employees.some((e) => e.id === m[1])) return { code: 404, obj: { error: "Salari\xE9 introuvable" } };
     const tpl = cleanTemplate(body);
     if (!tpl) return { code: 400, obj: { error: "Gabarit invalide (7 jours par parit\xE9, horaires HH:MM coh\xE9rents)" } };
-    await store2.putTemplate(m[1], tpl);
-    return { code: 200, obj: { template: tpl } };
+    try {
+      await store2.transact((current) => {
+        if (body.original !== void 0) {
+          const emptyWeek = () => Array.from({ length: 7 }, () => ({ worked: false }));
+          const currentTemplate = cleanTemplate(current.templates[m[1]] || { paire: emptyWeek(), impaire: emptyWeek() });
+          const original = cleanTemplate(body.original);
+          if (!original || JSON.stringify(original) !== JSON.stringify(currentTemplate)) throw Error("Les horaires ou les affectations ont chang\xE9. Rechargez cette semaine type avant d\u2019enregistrer.");
+        }
+        current.templates[m[1]] = tpl;
+      });
+      return { code: 200, obj: { template: tpl } };
+    } catch (e) {
+      return { code: 409, obj: { error: e.message || "Impossible d\u2019enregistrer les horaires." } };
+    }
   }
   if (m = p.match(/^\/api\/overrides\/([\w-]+)\/(\d{4}-\d{2}-\d{2})$/)) {
     const [, empId, day] = m;

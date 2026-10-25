@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import {ChevronLeft,ChevronRight,Coffee,Timer,Utensils} from 'lucide-react';
 import OvertimeOverview from './OvertimeOverview';
+import DutyAssignments from './DutyAssignments';
 import {apiFetch} from '../lib/api';
 import {Planning,Gabarits,Export} from './AdminView';
 import {getWeekPlan} from '../domain/planning';
@@ -11,16 +12,16 @@ const format=m=>`${Math.floor(m/60)} h${m%60?' '+String(m%60).padStart(2,'0'):''
 async function api(path,options){const r=await apiFetch(path,options);const d=await r.json();if(!r.ok)throw Error(d.error||'Impossible d’enregistrer.');return d;}
 export default function ExtraPanels({tab,admin,actor,onChanged}){
  const [data,setData]=useState(null),[err,setErr]=useState('');
- const refresh=useCallback(async()=>{try{setData(await api('/api/bootstrap?'+(admin?'as=admin':'employee='+encodeURIComponent(actor))));setErr('');}catch(e){setErr(e.message);}},[admin,actor]);
+ const refresh=useCallback(async()=>{try{setData(await api('/api/bootstrap?'+(admin?'as=admin':'employee='+encodeURIComponent(actor))));setErr('');return true;}catch(e){setErr(e.message);return false;}},[admin,actor]);
  useEffect(()=>{if(admin||actor)void refresh();const focus=()=>void refresh();addEventListener('focus',focus);const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},60000);return()=>{removeEventListener('focus',focus);clearInterval(timer);};},[refresh,admin,actor]);
  const write=async(path,method,body)=>{try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});await refresh();onChanged?.();}catch(e){setErr(e.message);throw e;}};
- const actions={saveTemplate:(emp,tpl)=>write('/api/templates/'+emp,'PUT',tpl),saveOverride:(emp,iso,day)=>write(`/api/overrides/${emp}/${iso}`,'PUT',day),resetOverride:(emp,iso)=>write(`/api/overrides/${emp}/${iso}`,'DELETE')};
+ const actions={saveTemplate:(emp,tpl,original)=>write('/api/templates/'+emp,'PUT',{...tpl,...(original?{original}:{})}),saveOverride:(emp,iso,day)=>write(`/api/overrides/${emp}/${iso}`,'PUT',day),resetOverride:(emp,iso)=>write(`/api/overrides/${emp}/${iso}`,'DELETE')};
  if(!admin&&!actor)return <div className="notice">Sélectionnez votre nom en haut de l’écran pour voir vos horaires.</div>;
  if(err&&!data)return <div role="alert" className="notice">{err}<button className="textbtn" onClick={refresh}>Réessayer</button></div>;
  if(!data)return <div className="panel">Chargement…</div>;
  const active={...data,employees:data.employees.filter(e=>e.active!==false)};
  if(!active.employees.length)return <div className="panel">Ajoutez d’abord les salariés dans l’onglet Équipe.</div>;
- return <>{err&&<div role="alert" className="notice">{err}</div>}<div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div></>;
+ return <>{err&&<div role="alert" className="notice">{err}</div>}<div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions} onReload={refresh}/>:tab==='duties'&&admin?<DutyAssignments data={active} write={write} onReload={refresh}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div></>;
 }
 function MySchedule({data,actor}){
  const [wk,setWk]=useState(()=>isoWeek(new Date()));const emp=data.employees.find(e=>e.id===actor);if(!emp)return <div className="notice">Ce salarié n’est plus actif.</div>;
