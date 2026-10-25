@@ -11,11 +11,9 @@ export default function CalendarDayContent({personal,events,actor,employeeName})
  const teamEvents=events.filter(request=>!(personal&&['leave','recovery'].includes(personal.kind)&&request.employee_id===actor&&request.status==='approved'));
  return <>
   {personal&&<span className={'calendar-personal calendar-personal-'+personal.kind}>
-   <span className="calendar-section-label">{personal.kind==='work'?'Mes horaires':'Ma journée'}</span>
    {personal.kind==='work'?<span className="calendar-shift-ranges">{personal.ranges.map(range=><span key={range}>{range}</span>)}</span>:<span className="calendar-personal-status">{personal.kind==='rest'?'Repos':personal.kind==='recovery'?'Ma récupération':'Mon congé'}</span>}
   </span>}
   {teamEvents.length>0&&<span className="calendar-team-absences">
-   <span className="calendar-section-label">Absences de l’équipe</span>
    {teamEvents.slice(0,2).map(request=><span className={'event calendar-absence '+request.status} key={request.id}>
     <span className="calendar-absence-caption">{absenceCaption(request)} :</span>
     <strong>{employeeName(request.employee_id)}</strong>
