@@ -6,11 +6,11 @@ import { useLive, refreshLive, liveActions, setIdentity } from "./live.js";
 import EmployeeView from "./ui/EmployeeView.jsx";
 import AdminView from "./ui/AdminView.jsx";
 
-function Topbar({ children, subtitle }) {
+function Topbar({ children, subtitle, tag = "V2" }) {
   return <div className="topbar">
     <div className="logo">C</div>
     <div className="brand" style={{ flex: 1 }}>
-      <div className="apptitle" style={{ fontWeight: 800, fontSize: 16 }}>Congéo <span style={{ fontSize: 11, opacity: .8 }}>V2 · prototype</span></div>
+      <div className="apptitle" style={{ fontWeight: 800, fontSize: 16 }}>Congéo <span style={{ fontSize: 11, opacity: .8 }}>{tag}</span></div>
       <div className="subtitle" style={{ fontSize: 11, opacity: .75 }}>{subtitle}</div>
     </div>
     {children}
@@ -24,8 +24,8 @@ function NamePicker({ onOk }) {
   const [err, setErr] = useState("");
   useEffect(() => { fetchEmployees().then(setEmployees).catch((e) => setErr(e.message)); }, []);
   return <div>
-    <Topbar subtitle="L'Échoppe du Marché (données fictives)" />
-    <div className="proto">Version de test : même fonctionnement que la V1 — tu choisis ton nom, il n'y a pas de connexion. Données fictives.</div>
+    <Topbar subtitle="L'Échoppe du Marché" />
+    <div className="proto">Comme la V1 : tu choisis ton nom, il n'y a pas de connexion.</div>
     <div className="wrap" style={{ maxWidth: 420 }}>
       <h1>Qui es-tu ?</h1>
       <div className="card" style={{ padding: 16, display: "grid", gap: 8, marginTop: 10 }}>
@@ -56,21 +56,21 @@ function LiveApp() {
   if (!data) return <div className="wrap">Chargement…</div>;
   if (isAdmin) {
     return <div>
-      <Topbar subtitle="L'Échoppe du Marché (données fictives)">
+      <Topbar subtitle="L'Échoppe du Marché">
         <span className="chip" style={{ background: "rgba(255,255,255,.15)", border: "none", color: "#fff" }}><b>Administration</b></span>
       </Topbar>
-      <div className="proto">Version de test : adresse d'administration séparée (comme la V1), sans connexion. Données fictives.</div>
+      <div className="proto">Adresse d'administration séparée, sans connexion — comme la V1.</div>
       <div className="wrap"><AdminView data={data} actions={liveActions} /></div>
     </div>;
   }
   const emp = data.employees.find((e) => e.id === who);
   if (!emp) { try { localStorage.removeItem(NAME_KEY); } catch {} return <NamePicker onOk={setWho} />; }
   return <div>
-    <Topbar subtitle="L'Échoppe du Marché (données fictives)">
+    <Topbar subtitle="L'Échoppe du Marché">
       <span className="chip" style={{ background: "rgba(255,255,255,.15)", border: "none", color: "#fff" }}><b>{emp.name}</b></span>
       <button className="btn ghost" style={{ fontSize: 12, padding: "6px 10px" }} onClick={() => { try { localStorage.removeItem(NAME_KEY); } catch {} setWho(null); }}>Changer de nom</button>
     </Topbar>
-    <div className="proto">Version de test : comme la V1, tu vois ton planning après avoir choisi ton nom — ce n'est pas une connexion. Données fictives.</div>
+    <div className="proto">Comme la V1, tu vois ton planning après avoir choisi ton nom — ce n'est pas une connexion.</div>
     <div className="wrap"><EmployeeView data={data} employee={emp} actions={liveActions} /></div>
   </div>;
 }
@@ -83,7 +83,7 @@ function DemoApp() {
   });
   const emp = data.employees.find((e) => e.id === who);
   return <div>
-    <Topbar subtitle="L'Échoppe du Marché (données fictives)">
+    <Topbar subtitle="L'Échoppe du Marché (données fictives)" tag="V2 · prototype">
       <select value={who} onChange={(e) => setWho(e.target.value)}>
         <option value="admin">Vue admin</option>
         {data.employees.map((e) => <option key={e.id} value={e.id}>{e.name} (salarié)</option>)}
@@ -95,7 +95,7 @@ function DemoApp() {
       Comme la V1, la version en ligne garde le choix du nom, sans connexion ; l'admin reste à une adresse séparée.
     </div>
     <div className="wrap">
-      {who === "admin" ? <AdminView data={data} actions={demoActions} /> : <EmployeeView data={data} employee={emp} actions={demoActions} />}
+      {who === "admin" ? <AdminView data={data} actions={demoActions} fictif /> : <EmployeeView data={data} employee={emp} actions={demoActions} />}
     </div>
   </div>;
 }

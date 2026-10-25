@@ -30,9 +30,10 @@ const ledgerFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, del
 
 // client : client pg déjà connecté (vrai pg ou pg-mem). seedIfEmpty : injecte
 // les données fictives si la base est vide (démo/test), à désactiver en réel.
-export async function createPgStore(client, { seedIfEmpty = true } = {}) {
+export async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, applySchema = true } = {}) {
   const q = async (text, values) => (await client.query(text, values)).rows;
-  await client.query(readFileSync(fileURLToPath(new URL("../schema.sql", import.meta.url)), "utf8"));
+  // schemaSql : texte injecté au bundling (Neon Function, pas de fs) ; sinon lecture fichier.
+  if (applySchema) await client.query(schemaSql ?? readFileSync(fileURLToPath(new URL("../schema.sql", import.meta.url)), "utf8"));
 
   if (seedIfEmpty && (await q("SELECT COUNT(*)::int AS n FROM employees"))[0].n === 0) {
     const s = seedDb();
@@ -71,7 +72,9 @@ export async function createPgStore(client, { seedIfEmpty = true } = {}) {
       for (const r of await q("SELECT * FROM plan_overrides")) overrides[`${r.employee_id}|${iso(r.day)}`] = dayRow(r);
       const requests = (await q("SELECT * FROM requests ORDER BY created_at")).map(reqFromRow);
       const recoveryLedger = (await q("SELECT * FROM recovery_ledger ORDER BY at")).map(ledgerFromRow);
-      return { employees, templates, overrides, requests, recoveryLedger };
+      const blocks = (await q("SELECT * FROM blocks ORDER BY start_date")).map((b) => ({ id: b.id, label: b.label, start: b.start_date, end: b.end_date }));
+      const settings = Object.fromEntries((await q("SELECT * FROM settings")).map((r) => [r.key, r.value]));
+      return { employees, templates, overrides, requests, recoveryLedger, blocks, settings };
     },
 
 

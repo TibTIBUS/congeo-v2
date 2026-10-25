@@ -67,6 +67,18 @@ CREATE TABLE IF NOT EXISTS recovery_ledger (
   reason      text,
   at          timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX ON recovery_ledger (employee_id);
-CREATE INDEX ON requests (employee_id, status);
+CREATE INDEX IF NOT EXISTS recovery_ledger_employee_id_idx ON recovery_ledger (employee_id);
+CREATE INDEX IF NOT EXISTS requests_employee_id_status_idx ON requests (employee_id, status);
 
+-- Périodes où les congés sont interdits (reprise des règles V1) + réglages.
+CREATE TABLE IF NOT EXISTS blocks (
+  id text PRIMARY KEY,
+  label text NOT NULL,
+  start_date text NOT NULL,
+  end_date text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key text PRIMARY KEY,
+  value text NOT NULL
+);

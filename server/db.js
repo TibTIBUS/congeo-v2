@@ -18,6 +18,8 @@ export function openDb(path) {
   // (v3 = comptes/sessions retirés, accès sans connexion comme la V1, 25 oct 12h57).
   const SEED_VERSION = 3;
   if (existsSync(path)) db = JSON.parse(readFileSync(path, "utf8"));
+  const withDefaults = (d) => { if (d) { d.blocks = d.blocks || []; d.settings = d.settings || {}; } return d; };
+  db = withDefaults(db);
   if (!db || db.seedVersion !== SEED_VERSION) { db = { ...seedDb(), seedVersion: SEED_VERSION }; persist(); }
   const mutate = (fn) => { const r = fn(db); persist(); return r; };
   return {

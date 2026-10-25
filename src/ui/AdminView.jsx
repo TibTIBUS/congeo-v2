@@ -11,7 +11,7 @@ import { Badges, Status, PariteBadge, WeekNav, fmtRanges } from "./bits.jsx";
 
 const OFF = { worked: false, start: null, end: null, pauseStart: null, pauseEnd: null, open: false, close: false };
 
-export default function AdminView({ data, actions }) {
+export default function AdminView({ data, actions, fictif = false }) {
   const [tab, setTab] = useState(() => {
     const h = location.hash.replace(/^#\/?/, "");
     return h.startsWith("admin/") && ["planning", "gabarits", "demandes", "export"].includes(h.slice(6)) ? h.slice(6) : "planning";
@@ -54,7 +54,7 @@ function Planning({ data, actions }) {
   return <div>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
       <div>
-        <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>PLANNING · L'ÉCHOPPE DU MARCHÉ (FICTIF)</div>
+        <div className="mut" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>PLANNING · L'ÉCHOPPE DU MARCHÉ{fictif ? " (FICTIF)" : ""}</div>
         <h1>Semaine {parityOf(wk)} · {fmtRange(dates[0])}</h1>
       </div>
       <WeekNav onPrev={() => move(-1)} onNext={() => move(1)}><PariteBadge parite={parityOf(wk)} week={wk.week} /></WeekNav>

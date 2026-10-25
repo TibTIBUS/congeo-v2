@@ -49,6 +49,8 @@ export function seed() {
       { id: "l3", employeeId: "tom", deltaMin: 21 * 60, reason: "Heures supplémentaires janv.-févr.", at: "2027-02-27T18:00:00" },
       { id: "l4", employeeId: "ines", deltaMin: 9 * 60, reason: "Remplacement samedi", at: "2027-02-20T18:00:00" },
     ],
+    blocks: [],
+    settings: {},
   };
 }
 

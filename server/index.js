@@ -14,7 +14,8 @@ import { openDb } from "./db.js";
 import { createPgStore } from "./db-pg.js";
 import { getWeekPlan } from "../src/domain/planning.js";
 import { isoWeek, isoWeeksInYear, parseISO } from "../src/domain/dates.js";
-import { requestDates } from "../src/domain/requests.js";
+import { requestDates, leaveDates } from "../src/domain/requests.js";
+import { leaveBlockedReason } from "../src/domain/blocks.js";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISODATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -50,6 +51,130 @@ function bootstrapFor(db, empId) {
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".ico": "image/x-icon", ".json": "application/json", ".map": "application/json" };
 
+// Cœur de routage API, partagé entre le serveur Node local (createApp) et
+// l'adaptateur Neon Function (server/function.js). Retourne { code, obj }.
+export async function handleApi(store, method, url, body) {
+  const p = url.pathname;
+  let m;
+
+  const db = await store.getDoc();
+
+  if (p === "/api/employees" && method === "GET") {
+    // Liste des prenoms pour le selecteur de nom (comme l'ecran d'accueil V1).
+    return { code: 200, obj: { employees: db.employees.map((e) => ({ id: e.id, name: e.name })) } };
+  }
+
+  if (p === "/api/bootstrap" && method === "GET") {
+    const empId = url.searchParams.get("employee");
+    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db } };
+    if (empId && db.employees.some((e) => e.id === empId)) return { code: 200, obj: bootstrapFor(db, empId) };
+    return { code: 400, obj: { error: "Paramètre employee=<id> ou as=admin requis" } };
+  }
+
+  if ((m = p.match(/^\/api\/planning\/([\w-]+)$/)) && method === "GET") {
+    const empId = m[1];
+    const year = Number(url.searchParams.get("year")), week = Number(url.searchParams.get("week"));
+    if (!Number.isInteger(year) || !Number.isInteger(week)) return { code: 400, obj: { error: "Paramètres year/week requis" } };
+    if (!db.employees.some((e) => e.id === empId)) return { code: 404, obj: { error: "Salarié introuvable" } };
+    return { code: 200, obj: { days: getWeekPlan(db.templates, db.overrides, empId, year, week) } };
+  }
+
+  // --- Actions de gestion (utilisees par l'adresse admin separee, comme en V1) ---
+
+  if ((m = p.match(/^\/api\/templates\/([\w-]+)$/)) && method === "PUT") {
+    if (!db.employees.some((e) => e.id === m[1])) return { code: 404, obj: { error: "Salarié introuvable" } };
+    const tpl = cleanTemplate(body);
+    if (!tpl) return { code: 400, obj: { error: "Gabarit invalide (7 jours par parité, horaires HH:MM cohérents)" } };
+    await store.putTemplate(m[1], tpl);
+    return { code: 200, obj: { template: tpl } };
+  }
+
+  if ((m = p.match(/^\/api\/overrides\/([\w-]+)\/(\d{4}-\d{2}-\d{2})$/))) {
+    const [, empId, day] = m;
+    if (!db.employees.some((e) => e.id === empId)) return { code: 404, obj: { error: "Salarié introuvable" } };
+    if (!ISODATE.test(day)) return { code: 400, obj: { error: "Date invalide" } };
+    if (method === "PUT") {
+      const d2 = cleanDay(body);
+      if (!d2) return { code: 400, obj: { error: "Journée invalide" } };
+      await store.putOverride(empId, day, d2);
+      return { code: 200, obj: { day: d2 } };
+    }
+    if (method === "DELETE") {
+      await store.deleteOverride(empId, day);
+      return { code: 200, obj: { ok: true } };
+    }
+  }
+
+  if (p === "/api/recovery" && method === "POST") {
+    if (!db.employees.some((e) => e.id === body.employeeId)) return { code: 404, obj: { error: "Salarié introuvable" } };
+    const delta = Math.round(Number(body.deltaMin));
+    if (!Number.isInteger(delta) || delta <= 0) return { code: 400, obj: { error: "deltaMin entier positif requis" } };
+    const entry = { id: "l" + Date.now(), employeeId: body.employeeId, deltaMin: delta, reason: String(body.reason || "Heures supplémentaires"), at: new Date().toISOString() };
+    await store.addRecovery(entry);
+    return { code: 201, obj: { entry } };
+  }
+
+  if (p === "/api/requests" && method === "GET") {
+    const empId = url.searchParams.get("employee");
+    return { code: 200, obj: { requests: empId ? db.requests.filter((r) => r.employeeId === empId) : db.requests } };
+  }
+
+  if (p === "/api/requests" && method === "POST") {
+    // Identite declaree par le client (comme l'onglet partage de la V1).
+    const empId = String(body.employeeId || "");
+    if (!db.employees.some((e) => e.id === empId)) return { code: 400, obj: { error: "employeeId inconnu" } };
+    let r;
+    if (body.type === "leave") {
+      if (!ISODATE.test(body.dateStart || "") || !ISODATE.test(body.dateEnd || "")) return { code: 400, obj: { error: "dateStart/dateEnd requis" } };
+      if (body.dateEnd < body.dateStart) return { code: 400, obj: { error: "Choisissez une période valide." } };
+      // Périodes bloquées (mêmes règles que la V1 : semaine n° 1 + périodes nommées, dimanches ignorés)
+      const firstWeek = (db.settings || {}).firstWeek !== "false";
+      const days = leaveDates({ dateStart: body.dateStart, dateEnd: body.dateEnd });
+      const bad = days.find((d) => leaveBlockedReason(d, db.blocks, firstWeek));
+      if (bad) return { code: 400, obj: { error: `${bad} : ${leaveBlockedReason(bad, db.blocks, firstWeek)}. Choisissez une autre période.` } };
+      r = { employeeId: empId, type: "leave", dateStart: body.dateStart, dateEnd: body.dateEnd };
+    } else if (body.type === "recovery") {
+      if (!Array.isArray(body.dates) || body.dates.length === 0 || !body.dates.every((d) => ISODATE.test(d))) return { code: 400, obj: { error: "dates requises" } };
+      r = { employeeId: empId, type: "recovery", dates: body.dates.slice(0, 30) };
+    } else return { code: 400, obj: { error: "type leave|recovery requis" } };
+    r.id = "r" + Date.now(); r.status = "pending"; r.createdAt = new Date().toISOString();
+    await store.createRequest(r);
+    return { code: 201, obj: { request: r } };
+  }
+
+  if ((m = p.match(/^\/api\/requests\/([\w-]+)\/validate$/)) && method === "POST") {
+    // Atomique et idempotent dans le store (section critique synchrone en JSON,
+    // transaction SQL avec verrou de ligne en Postgres).
+    const [code, obj] = await store.validateRequest(m[1]);
+    return { code, obj };
+  }
+
+  if ((m = p.match(/^\/api\/requests\/([\w-]+)\/reject$/)) && method === "POST") {
+    const [codeR, objR] = await store.rejectRequest(m[1]);
+    return { code: codeR, obj: objR };
+  }
+
+  if ((m = p.match(/^\/api\/recovery\/([\w-]+)$/)) && method === "GET") {
+    const empId = m[1];
+    return { code: 200, obj: { balanceMin: db.recoveryLedger.filter((l) => l.employeeId === empId).reduce((sum, l) => sum + l.deltaMin, 0) } };
+  }
+
+  if (p === "/api/export" && method === "GET") {
+    const year = Number(url.searchParams.get("year"));
+    if (!Number.isInteger(year)) return { code: 400, obj: { error: "Paramètre year requis" } };
+    const leavesByEmployee = {};
+    db.employees.forEach((e) => { leavesByEmployee[e.id] = []; });
+    db.requests.filter((r) => r.type === "leave" && r.status === "approved").forEach((r) => {
+      const weeks = new Set();
+      requestDates(r).forEach((iso) => { const w = isoWeek(parseISO(iso)); if (w.year === year) weeks.add(w.week); });
+      leavesByEmployee[r.employeeId] = [...weeks].sort((a, b) => a - b);
+    });
+    return { code: 200, obj: { year, weeks: isoWeeksInYear(year), leavesByEmployee } };
+  }
+
+  return { code: 404, obj: { error: "Route inconnue" } };
+}
+
 // storeOrPath : un store (interface async de db.js / db-pg.js) ou un chemin JSON.
 export function createApp(storeOrPath, distDir) {
   const store = typeof storeOrPath === "string" ? openDb(storeOrPath) : storeOrPath;
@@ -70,134 +195,7 @@ export function createApp(storeOrPath, distDir) {
     }
 
     const body = req.method === "POST" || req.method === "PUT" ? await readBody(req) : {};
-    const db = await store.getDoc();
-
-    if (p === "/api/employees" && req.method === "GET") {
-      // Liste des prenoms pour le selecteur de nom (comme l'ecran d'accueil V1).
-      return json(res, 200, { employees: db.employees.map((e) => ({ id: e.id, name: e.name })) });
-    }
-
-    if (p === "/api/bootstrap" && req.method === "GET") {
-      const empId = url.searchParams.get("employee");
-      if (url.searchParams.get("as") === "admin") return json(res, 200, { admin: true, ...db });
-      if (empId && db.employees.some((e) => e.id === empId)) return json(res, 200, bootstrapFor(db, empId));
-      return json(res, 400, { error: "Paramètre employee=<id> ou as=admin requis" });
-    }
-
-    if ((m = p.match(/^\/api\/planning\/([\w-]+)$/)) && req.method === "GET") {
-      const empId = m[1];
-      const year = Number(url.searchParams.get("year")), week = Number(url.searchParams.get("week"));
-      if (!Number.isInteger(year) || !Number.isInteger(week)) return json(res, 400, { error: "Paramètres year/week requis" });
-      if (!db.employees.some((e) => e.id === empId)) return json(res, 404, { error: "Salarié introuvable" });
-      return json(res, 200, { days: getWeekPlan(db.templates, db.overrides, empId, year, week) });
-    }
-
-    // --- Actions de gestion (utilisees par l'adresse admin separee, comme en V1) ---
-
-    if ((m = p.match(/^\/api\/templates\/([\w-]+)$/)) && req.method === "PUT") {
-      if (!db.employees.some((e) => e.id === m[1])) return json(res, 404, { error: "Salarié introuvable" });
-      const tpl = cleanTemplate(body);
-      if (!tpl) return json(res, 400, { error: "Gabarit invalide (7 jours par parité, horaires HH:MM cohérents)" });
-      await store.putTemplate(m[1], tpl);
-      return json(res, 200, { template: tpl });
-    }
-
-    if ((m = p.match(/^\/api\/overrides\/([\w-]+)\/(\d{4}-\d{2}-\d{2})$/))) {
-      const [, empId, day] = m;
-      if (!db.employees.some((e) => e.id === empId)) return json(res, 404, { error: "Salarié introuvable" });
-      if (!ISODATE.test(day)) return json(res, 400, { error: "Date invalide" });
-      if (req.method === "PUT") {
-        const d2 = cleanDay(body);
-        if (!d2) return json(res, 400, { error: "Journée invalide" });
-        await store.putOverride(empId, day, d2);
-        return json(res, 200, { day: d2 });
-      }
-      if (req.method === "DELETE") {
-        await store.deleteOverride(empId, day);
-        return json(res, 200, { ok: true });
-      }
-    }
-
-    if (p === "/api/recovery" && req.method === "POST") {
-      if (!db.employees.some((e) => e.id === body.employeeId)) return json(res, 404, { error: "Salarié introuvable" });
-      const delta = Math.round(Number(body.deltaMin));
-      if (!Number.isInteger(delta) || delta <= 0) return json(res, 400, { error: "deltaMin entier positif requis" });
-      const entry = { id: "l" + Date.now(), employeeId: body.employeeId, deltaMin: delta, reason: String(body.reason || "Heures supplémentaires"), at: new Date().toISOString() };
-      await store.addRecovery(entry);
-      return json(res, 201, { entry });
-    }
-
-    if (p === "/api/requests" && req.method === "GET") {
-      const empId = url.searchParams.get("employee");
-      return json(res, 200, { requests: empId ? db.requests.filter((r) => r.employeeId === empId) : db.requests });
-    }
-
-    if (p === "/api/requests" && req.method === "POST") {
-      // Identite declaree par le client (comme l'onglet partage de la V1).
-      const empId = String(body.employeeId || "");
-      if (!db.employees.some((e) => e.id === empId)) return json(res, 400, { error: "employeeId inconnu" });
-      let r;
-      if (body.type === "leave") {
-        if (!ISODATE.test(body.dateStart || "") || !ISODATE.test(body.dateEnd || "")) return json(res, 400, { error: "dateStart/dateEnd requis" });
-        r = { employeeId: empId, type: "leave", dateStart: body.dateStart, dateEnd: body.dateEnd };
-      } else if (body.type === "recovery") {
-        if (!Array.isArray(body.dates) || body.dates.length === 0 || !body.dates.every((d) => ISODATE.test(d))) return json(res, 400, { error: "dates requises" });
-        r = { employeeId: empId, type: "recovery", dates: body.dates.slice(0, 30) };
-      } else return json(res, 400, { error: "type leave|recovery requis" });
-      r.id = "r" + Date.now(); r.status = "pending"; r.createdAt = new Date().toISOString();
-      await store.createRequest(r);
-      return json(res, 201, { request: r });
-    }
-
-    if ((m = p.match(/^\/api\/requests\/([\w-]+)\/validate$/)) && req.method === "POST") {
-      // Atomique et idempotent dans le store (section critique synchrone en JSON,
-      // transaction SQL avec verrou de ligne en Postgres).
-      const out = await store.validateRequest(m[1]);
-      return json(res, out[0], out[1]);
-    }
-
-    if ((m = p.match(/^\/api\/requests\/([\w-]+)\/reject$/)) && req.method === "POST") {
-      const out = await store.rejectRequest(m[1]);
-      return json(res, out[0], out[1]);
-    }
-
-    if ((m = p.match(/^\/api\/recovery\/([\w-]+)$/)) && req.method === "GET") {
-      const empId = m[1];
-      return json(res, 200, { balanceMin: db.recoveryLedger.filter((l) => l.employeeId === empId).reduce((sum, l) => sum + l.deltaMin, 0) });
-    }
-
-    if (p === "/api/export" && req.method === "GET") {
-      const year = Number(url.searchParams.get("year"));
-      if (!Number.isInteger(year)) return json(res, 400, { error: "Paramètre year requis" });
-      const leavesByEmployee = {};
-      db.employees.forEach((e) => { leavesByEmployee[e.id] = []; });
-      db.requests.filter((r) => r.type === "leave" && r.status === "approved").forEach((r) => {
-        const weeks = new Set();
-        requestDates(r).forEach((iso) => { const w = isoWeek(parseISO(iso)); if (w.year === year) weeks.add(w.week); });
-        leavesByEmployee[r.employeeId] = [...weeks].sort((a, b) => a - b);
-      });
-      return json(res, 200, { year, weeks: isoWeeksInYear(year), leavesByEmployee });
-    }
-
-    return json(res, 404, { error: "Route inconnue" });
+    const out = await handleApi(store, req.method, url, body);
+    return json(res, out.code, out.obj);
   });
 }
-
-async function main() {
-  const port = Number(process.env.PORT || 4180);
-  const dist = new URL("../dist", import.meta.url).pathname;
-  let store, label;
-  if (process.env.DATABASE_URL) { // base Postgres dédiée (ex. version de test en ligne)
-    const { default: pg } = await import("pg");
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
-    store = await createPgStore(client, { seedIfEmpty: process.env.CONGEO_SEED_DEMO !== "0" });
-    label = "Postgres (DATABASE_URL)";
-  } else {
-    const path = process.env.CONGEO_DB || new URL("./data/server-db.json", import.meta.url).pathname;
-    store = openDb(path);
-    label = `fichier ${path}`;
-  }
-  createApp(store, dist).listen(port, () => console.log(`Congéo V2 : http://127.0.0.1:${port} — stockage : ${label} — accès sans connexion (modèle V1), admin sur /#/admin`));
-}
-if (import.meta.url === `file://${process.argv[1]}`) main();
