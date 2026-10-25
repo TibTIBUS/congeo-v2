@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useState} from 'react';
+import {ChevronLeft,ChevronRight} from 'lucide-react';
 import OvertimeOverview from './OvertimeOverview';
 import {apiFetch} from '../lib/api';
 import {Planning,Gabarits,Export} from './AdminView';
@@ -26,7 +27,7 @@ function MySchedule({data,actor}){
  const move=n=>setWk(isoWeek(addDays(mondayOfISOWeek(wk.year,wk.week),7*n)));
  const absence=day=>data.requests.find(r=>r.employeeId===actor&&r.status==='approved'&&(r.type==='recovery'?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day));
  const bal=data.recoveryLedger.filter(l=>l.employeeId===actor).reduce((s,l)=>s+l.deltaMin,0);
- return <><div className="calendar-toolbar"><button className="iconbtn" aria-label="Semaine précédente" onClick={()=>move(-1)}>‹</button><h2>{fmtRange(weekDates(wk.year,wk.week)[0])}</h2><button className="iconbtn" aria-label="Semaine suivante" onClick={()=>move(1)}>›</button><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Aujourd’hui</button></div>{plan.map((p,i)=>{const a=absence(toISODate(p.date));return <div key={i} className={'card daycard '+(i===6?'sunday':'')}><div><strong>{p.date.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'short'})}</strong><p>{a?(a.type==='recovery'?'Récupération':'Congé'):p.worked?fmtRanges(p):'Repos'}</p></div>{!a&&<Badges d={p}/>}</div>;})}<div className="panel"><h2>Solde de récupération</h2><p>{format(bal)} disponibles</p></div></>;
+ return <><div className="my-schedule-navigation"><h2 aria-live="polite">{fmtRange(weekDates(wk.year,wk.week)[0])}</h2><div className="my-schedule-week-buttons"><button className="btn secondary schedule-week-button" onClick={()=>move(-1)}><ChevronLeft size={26} aria-hidden="true"/><span>Semaine précédente</span></button><button className="btn schedule-week-button" onClick={()=>move(1)}><span>Semaine suivante</span><ChevronRight size={26} aria-hidden="true"/></button></div><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Cette semaine</button></div>{plan.map((p,i)=>{const a=absence(toISODate(p.date));return <div key={i} className={'card daycard '+(i===6?'sunday':'')}><div><strong>{p.date.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'short'})}</strong><p>{a?(a.type==='recovery'?'Récupération':'Congé'):p.worked?fmtRanges(p):'Repos'}</p></div>{!a&&<Badges d={p}/>}</div>;})}<div className="panel"><h2>Solde de récupération</h2><p>{format(bal)} disponibles</p></div></>;
 }
 function Hours({data,write}){
  const [selected,setSelected]=useState(null);
