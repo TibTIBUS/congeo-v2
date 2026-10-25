@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <title>Congéo — calendrier du magasin</title>
+  <defs><linearGradient id="mint" x1="64" y1="0" x2="448" y2="512" gradientUnits="userSpaceOnUse"><stop stop-color="#AEDDDB"/><stop offset="1" stop-color="#50B6B2"/></linearGradient></defs>
+  <path fill="url(#mint)" d="M0 0h512v512H0z"/>
+  <rect x="131" y="145" width="250" height="257" rx="49" fill="#377D7A" opacity=".16"/>
+  <rect x="131" y="129" width="250" height="257" rx="49" fill="#23252A"/>
+  <path d="M131 206h250" stroke="#50B6B2" stroke-width="6"/>
+  <path d="M195 116v36m122-36v36" stroke="white" stroke-width="19" stroke-linecap="round"/>
+  <g fill="#AEDDDB"><rect x="174" y="237" width="25" height="25" rx="8"/><rect x="230" y="237" width="25" height="25" rx="8"/><rect x="286" y="237" width="25" height="25" rx="8"/><rect x="174" y="291" width="25" height="25" rx="8"/></g>
+  <path d="m235 313 30 30 65-70" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

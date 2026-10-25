@@ -77,3 +77,25 @@ h1{letter-spacing:-.5px}
 @media(max-width:800px){.sunday-date-controls{gap:15px}.sunday-date-controls>label{width:100%;min-width:0}.sunday-opening-heading h2{font-size:17px}.sunday-openings .template-actions>span{font-size:12px}.calendar-sunday-open{font-size:9px;padding:2px 1px;overflow-wrap:anywhere}}
 
 .day.sunday.sunday-open.blocked{background:repeating-linear-gradient(135deg,#f3f5f6,#f3f5f6 5px,#e6eaec 5px,#e6eaec 6px)}
+
+/* Navigation mobile : accès directs et rubriques secondaires. */
+.sidebar .mobile-navigation{display:none}
+@media(max-width:800px){
+ .sidebar .desktop-navigation{display:none}
+ .sidebar{padding-bottom:env(safe-area-inset-bottom,0px);border-top:1px solid #DCEBEA;border-bottom:0;box-shadow:0 -4px 20px #23252A08}
+ .sidebar .mobile-navigation{display:flex;padding:0 4px;overflow:visible;gap:0}
+ .sidebar .mobile-navigation>button{flex:1;min-width:0;max-width:none;min-height:72px;padding:12px 4px 10px;font-size:.8rem;white-space:nowrap}
+ .sidebar .mobile-navigation>button svg{width:23px;height:23px}
+ .sidebar .mobile-navigation>button.active{color:#287D78;background:#EAF5F5}
+ .sidebar .mobile-navigation .mobile-navcount{position:absolute;top:5px;left:calc(50% + 8px);min-width:18px;height:18px;display:grid;place-items:center;border-radius:20px;background:#377D7A;color:#fff;padding:0 4px;font-size:.65rem;line-height:1}
+ .workspace{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))!important}
+ .sidebar .mobile-more{width:min(340px,calc(100vw - 24px));background:#fff;color:#23252A;border:1px solid #DCEBEA;border-radius:16px;box-shadow:0 8px 35px #23252A22;overflow:visible;z-index:30}
+ .mobile-more-heading{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 8px 18px;border-bottom:1px solid #E3EEEE}
+ .mobile-more-heading strong{font-size:.95rem}
+ .sidebar .mobile-more-heading button{flex:none;min-width:40px;width:40px;max-width:40px;min-height:40px;padding:8px}
+ .mobile-more-list{max-height:min(60dvh,480px);overflow-y:auto;overscroll-behavior:contain;padding:6px}
+ .sidebar .mobile-more-list button{max-width:none;flex-direction:row;gap:12px;width:100%;min-height:48px;padding:12px;border-radius:8px;font-size:.9rem;text-align:left;color:#3E4A4F}
+ .sidebar .mobile-more-list button span{white-space:normal}
+ .sidebar .mobile-more-list button.active{box-shadow:none;color:#287D78}
+ .mobile-more-arrow{fill:white}
+}
