@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {Check,Copy} from 'lucide-react';
-import {DAY_NAMES_LONG,isoWeek,weekDates,fmtRange} from '../domain/dates';
+import {DAY_NAMES_LONG,isoWeek,weekDates,fmtRange,addDays,parityOf} from '../domain/dates';
 import {defaultWorkTemplates} from '../domain/defaults';
 
 const OFF={worked:false,start:null,end:null,pauseStart:null,pauseEnd:null,open:false,close:false};
@@ -17,7 +17,8 @@ export default function TemplateEditor({data,actions}){
  const [drafts,setDrafts]=useState({}),[saving,setSaving]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
  const template=drafts[empId]||clone(data.templates[empId]),other=parity==='paire'?'impaire':'paire';
  const dirty=!!drafts[empId],employee=data.employees.find(e=>e.id===empId);
- const week=isoWeek(new Date()),exampleWeek=week.week%2===(parity==='paire'?0:1)?week.week:week.week+1;
+ const week=isoWeek(new Date());let exampleMonday=weekDates(week.year,week.week)[0];
+ while(parityOf(isoWeek(exampleMonday))!==parity)exampleMonday=addDays(exampleMonday,7);
  const update=change=>{setDrafts(previous=>({...previous,[empId]:change(clone(previous[empId]||data.templates[empId]))}));setError('');setMessage('');};
  const setDay=(index,change)=>update(t=>{t[parity][index]={...t[parity][index],...change};return t;});
  const setWorked=(index,worked)=>{
@@ -48,7 +49,7 @@ export default function TemplateEditor({data,actions}){
     <label className="template-employee">Salarié<select aria-label="Salarié des semaines types" value={empId} onChange={event=>{setEmpId(event.target.value);setError('');setMessage('');}}>{data.employees.map(e=><option key={e.id} value={e.id}>{e.name}{drafts[e.id]?' · à enregistrer':''}</option>)}</select></label>
     <div className="template-parities" role="group" aria-label="Semaine à modifier">{PARITIES.map(par=><button type="button" key={par} aria-pressed={parity===par} onClick={()=>setParity(par)}>Semaine {par}</button>)}</div>
    </div>
-   <div className="template-week-context"><p>Exemple : {fmtRange(weekDates(week.year,exampleWeek)[0])}.</p>{dirty&&<span>Modifications à enregistrer</span>}</div>
+   <div className="template-week-context"><p>Exemple : {fmtRange(exampleMonday)}.</p>{dirty&&<span>Modifications à enregistrer</span>}</div>
    <div className="template-table-wrap"><table className="template-table">
     <colgroup><col className="template-col-day"/><col className="template-col-state"/><col/><col/><col className="template-col-duty"/><col className="template-col-duty"/></colgroup>
     <thead><tr><th scope="col">Jour</th><th scope="col">Journée</th><th scope="col">Matin</th><th scope="col">Après-midi</th><th scope="col">Ouverture</th><th scope="col">Fermeture</th></tr></thead>
@@ -57,7 +58,7 @@ export default function TemplateEditor({data,actions}){
      return <tr key={i} className={day.worked?'':'template-rest-row'}>
       <th scope="row"><strong>{DAY_NAMES_LONG[i]}</strong>{i===6&&<small>Magasin fermé</small>}{day.worked&&<label className="template-continuous"><input type="checkbox" checked={!split} aria-label={`${DAY_NAMES_LONG[i]} · journée continue`} onChange={event=>setDay(i,event.target.checked?{pauseStart:null,pauseEnd:null}:{pauseStart:'12:00',pauseEnd:'14:00'})}/>Sans coupure</label>}</th>
       <td className="template-day-state"><select aria-label={`${DAY_NAMES_LONG[i]} · travaillé ou repos`} value={day.worked?'work':'rest'} disabled={i===6} onChange={event=>setWorked(i,event.target.value==='work')}><option value="work">Travaillé</option><option value="rest">Repos</option></select></td>
-      {day.worked?<><td><div className="template-period"><span className="template-mobile-period">{split?'Matin':'Journée continue'}</span><div className="template-times"><TimeField day={day} index={i} parity={parity} onChange={setDay} field="start" label="Arrivée"/><TimeField day={day} index={i} parity={parity} onChange={setDay} field={split?'pauseStart':'end'} label={split?'Départ matin':'Départ'}/></div></div></td><td>{split?<div className="template-period"><span className="template-mobile-period">Après-midi</span><div className="template-times"><TimeField day={day} index={i} parity={parity} onChange={setDay} field="pauseEnd" label="Retour"/><TimeField day={day} index={i} parity={parity} onChange={setDay} field="end" label="Départ"/></div></div>:<span className="template-rest-caption">Sans coupure</span>}</td></>:<td colSpan={2} className="template-rest-caption">Repos · aucun horaire à renseigner</td>}
+      {day.worked?<><td className="template-period-cell"><div className="template-period"><span className="template-mobile-period">{split?'Matin':'Journée continue'}</span><div className="template-times"><TimeField day={day} index={i} parity={parity} onChange={setDay} field="start" label="Arrivée"/><TimeField day={day} index={i} parity={parity} onChange={setDay} field={split?'pauseStart':'end'} label={split?'Départ matin':'Départ'}/></div></div></td><td className="template-period-cell">{split?<div className="template-period"><span className="template-mobile-period">Après-midi</span><div className="template-times"><TimeField day={day} index={i} parity={parity} onChange={setDay} field="pauseEnd" label="Retour"/><TimeField day={day} index={i} parity={parity} onChange={setDay} field="end" label="Départ"/></div></div>:<span className="template-rest-caption">Sans coupure</span>}</td></>:<td colSpan={2} className="template-rest-caption template-period-cell">Repos · aucun horaire à renseigner</td>}
       {['open','close'].map((key,index)=><td key={key} className="template-duty-cell"><label className="template-duty"><input type="checkbox" aria-label={`${DAY_NAMES_LONG[i]} · ${index?'Fermeture':'Ouverture'} · semaine ${parity}`} checked={day.worked&&!!day[key]} disabled={!day.worked} onChange={event=>setDay(i,{[key]:event.target.checked})}/><span>{index?'Fermeture':'Ouverture'}</span></label></td>)}
      </tr>;
     })}</tbody>
