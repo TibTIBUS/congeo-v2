@@ -10,7 +10,14 @@ let identity = null; // { admin: true } ou { employeeId }
 let listeners = [];
 const emit = () => listeners.forEach((l) => l());
 
-export function setIdentity(id) { identity = id; }
+export function setIdentity(id) {
+  // Changement d'identité (salarié -> admin ou inverse) : NE JAMAIS réutiliser
+  // le bootstrap de l'autre portée — l'admin doit voir les 10 salariés, le
+  // salarié seulement les siennes. On repart de « Chargement… ».
+  const changed = JSON.stringify(id) !== JSON.stringify(identity);
+  identity = id;
+  if (changed) { state = null; emit(); }
+}
 export async function refreshLive() {
   if (!identity) return;
   state = await api(identity.admin ? "/api/bootstrap?as=admin" : `/api/bootstrap?employee=${encodeURIComponent(identity.employeeId)}`);
