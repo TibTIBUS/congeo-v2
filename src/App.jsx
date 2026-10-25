@@ -9,7 +9,7 @@ import AdminView from "./ui/AdminView.jsx";
 function Topbar({ children, subtitle }) {
   return <div className="topbar">
     <div className="logo">C</div>
-    <div style={{ flex: 1 }}>
+    <div className="brand" style={{ flex: 1 }}>
       <div className="apptitle" style={{ fontWeight: 800, fontSize: 16 }}>Congéo <span style={{ fontSize: 11, opacity: .8 }}>V2 · prototype</span></div>
       <div className="subtitle" style={{ fontSize: 11, opacity: .75 }}>{subtitle}</div>
     </div>

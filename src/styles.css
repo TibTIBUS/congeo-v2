@@ -10,6 +10,12 @@ body { margin: 0; background: var(--bg); color: var(--dark); }
 button { font-family: inherit; cursor: pointer; }
 input, select { font-family: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; max-width: 100%; min-width: 0; }
 .topbar { background: var(--pri); color: #fff; display: flex; gap: 12px; align-items: center; padding: 10px 18px; }
+/* Le sélecteur de vue ne doit jamais écraser le titre : certains navigateurs/extension
+   remplacent <select> par un widget pleine largeur (ex. .bb-custom-select-container). */
+.topbar .brand { min-width: 0; }
+.topbar .apptitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .subtitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar > select, .topbar .bb-custom-select-container { flex: 0 0 auto !important; width: auto !important; max-width: 46% !important; min-width: 0 !important; }
 .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--pri2); display: grid; place-items: center; font-weight: 800; color: var(--dark); flex-shrink: 0; }
 .proto { background: #fff8e6; border-bottom: 1px solid #f0dfae; color: #7a5c00; font-size: 12px; padding: 7px 18px; }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 18px 60px; }
