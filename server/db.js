@@ -8,6 +8,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import { seedDb } from "./seed.js";
 import { checkRecoveryValidation } from "../src/domain/requests.js";
+import {requestDates} from '../src/domain/requests.js';
+import {hasSickConflict} from '../src/domain/sickLeave.js';
 
 const balance = (db, empId) => db.recoveryLedger.filter((l) => l.employeeId === empId).reduce((s, l) => s + l.deltaMin, 0);
 
@@ -38,6 +40,7 @@ export function openDb(path) {
       if (!r) return [404, { error: "Demande introuvable" }];
       if (r.status === "approved") return [200, { request: r, idempotent: true }];
       if (r.status !== "pending") return [409, { error: "Demande déjà refusée" }];
+      if(hasSickConflict(d,r.employeeId,requestDates(r)))return [409,{error:'Un arrêt de travail est enregistré pour ce salarié sur ces dates.'}];
       if (r.type === "recovery") {
         const chk = checkRecoveryValidation(r, d.templates, d.overrides, balance(d, r.employeeId));
         if (!chk.ok) return [409, { error: chk.reason }];

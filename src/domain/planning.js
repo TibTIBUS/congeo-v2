@@ -4,6 +4,7 @@
 // La pause du midi est definie par ses horaires de debut et fin (demande de Thibaut, 25 oct) ;
 // elle est visible au planning et deduite des heures travaillees et des recuperations.
 import { toISODate, weekDates, parityOf, isoWeek } from "./dates.js";
+import {approvedAbsences} from './sickLeave.js';
 
 export const SHOP_DAYS = [0, 1, 2, 3, 4, 5]; // lundi-samedi ; dimanche ferme
 
@@ -66,10 +67,9 @@ export function weekCoverage(plansByEmployee,days=SHOP_DAYS) {
 
 // Presence reflects approved absences, while templates remain unchanged.
 export function effectiveWeekPlan(data,employeeId,year,week){
- const absent=new Set();
- for(const r of data.requests||[])if(r.employeeId===employeeId&&r.status==='approved'){
-  if(r.type==='recovery')for(const d of r.dates||[])absent.add(d);
-  else {let d=new Date(r.dateStart+'T12:00:00');const end=new Date(r.dateEnd+'T12:00:00');for(let i=0;d<=end&&i<370;i++,d.setDate(d.getDate()+1))absent.add(toISODate(d));}
- }
- return getWeekPlan(data.templates,data.overrides,employeeId,year,week).map(d=>absent.has(toISODate(d.date))?{...d,worked:false,open:false,close:false}:d);
+ const absences=approvedAbsences(data).filter(r=>r.employeeId===employeeId);
+ return getWeekPlan(data.templates,data.overrides,employeeId,year,week).map(d=>{
+  const day=toISODate(d.date),absent=absences.some(r=>r.type==='recovery'?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day);
+  return absent?{...d,worked:false,open:false,close:false}:d;
+ });
 }

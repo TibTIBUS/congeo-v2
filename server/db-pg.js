@@ -14,6 +14,8 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { seedDb } from "./seed.js";
 import { checkRecoveryValidation } from "../src/domain/requests.js";
+import {requestDates} from '../src/domain/requests.js';
+import {hasSickConflict} from '../src/domain/sickLeave.js';
 
 const iso = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 const hm = (v) => (v == null ? null : String(v).slice(0, 5));
@@ -127,6 +129,7 @@ export async function createPgStore(client, { seedIfEmpty = true, schemaSql = nu
         const r = reqFromRow(row);
         if (r.status === "approved") { await client.query("COMMIT"); return [200, { request: r, idempotent: true }] };
         if (r.status !== "pending") { await client.query("ROLLBACK"); return [409, { error: "Demande déjà refusée" }] };
+        if(hasSickConflict(await store.getDoc(),r.employeeId,requestDates(r))){await client.query('ROLLBACK');return [409,{error:'Un arrêt de travail est enregistré pour ce salarié sur ces dates.'}];}
         let deduct = 0;
         if (r.type === "recovery") {
           const chk = checkRecoveryValidation(r, { [r.employeeId]: await templatesOf(r.employeeId) }, await overridesOf(r.employeeId), await balanceOf(r.employeeId));

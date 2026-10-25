@@ -22,6 +22,8 @@ import {getOpenSundays} from '../src/domain/sundays.js';
 import {applySundayOpening} from './sundays.js';
 import { applyDutyAssignments } from "../src/domain/duties.js";
 import {monthlyOvertime,saveMonthlyOvertime} from './monthly-overtime.js';
+import {sickHistory,activeSickLeaves} from '../src/domain/sickLeave.js';
+import {changeSickLeave} from './sick-leave.js';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISODATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -53,6 +55,7 @@ function bootstrapFor(db, empId) {
     templates: { [empId]: db.templates[empId] },
     overrides: Object.fromEntries(Object.entries(db.overrides).filter(([k]) => k.startsWith(empId + "|"))),
     requests: db.requests.filter((r) => r.employeeId === empId),
+    sickLeaves: activeSickLeaves(db).filter(r=>r.employeeId===empId),
     recoveryLedger: db.recoveryLedger.filter((l) => l.employeeId === empId),
   };
 }
@@ -65,6 +68,18 @@ export async function handleApi(store, method, url, body) {
   const restored=await restoredApi(store,method,url,body);if(restored)return restored;
   const p = url.pathname;
   let m;
+
+  if(p==='/api/sick-leaves'){
+    if(method==='GET'){
+      if(url.searchParams.get('admin')!=='1')return {code:403,obj:{error:'Cette page est réservée à la gérante.'}};
+      const current=await store.getDoc();return {code:200,obj:{employees:current.employees.map(e=>({id:e.id,name:e.name,active:e.active!==false})),sickLeaves:sickHistory(current)}};
+    }
+    if(method==='POST'){
+      if(body?.admin!==true)return {code:403,obj:{error:'Cette action est réservée à la gérante.'}};
+      try{const result=await store.transact(db=>changeSickLeave(db,body));return {code:200,obj:result};}
+      catch(e){return {code:409,obj:{error:e.message||'Impossible d’enregistrer l’arrêt.'}};}
+    }
+  }
 
   if(p==='/api/monthly-overtime'){
     if(method==='GET'){
@@ -97,7 +112,7 @@ export async function handleApi(store, method, url, body) {
 
   if (p === "/api/bootstrap" && method === "GET") {
     const empId = url.searchParams.get("employee");
-    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db,openSundays:getOpenSundays(db) } };
+    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db,openSundays:getOpenSundays(db),sickLeaves:activeSickLeaves(db) } };
     if (empId && db.employees.some((e) => e.id === empId)) return { code: 200, obj: bootstrapFor(db, empId) };
     return { code: 400, obj: { error: "Paramètre employee=<id> ou as=admin requis" } };
   }

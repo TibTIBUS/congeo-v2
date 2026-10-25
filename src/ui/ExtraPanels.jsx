@@ -1,7 +1,9 @@
+import {approvedAbsences} from '../domain/sickLeave';
 import React,{useCallback,useEffect,useState} from 'react';
-import {ChevronLeft,ChevronRight,Coffee,Timer,Utensils} from 'lucide-react';
+import {ChevronLeft,ChevronRight,Coffee,Timer,Utensils,CalendarOff} from 'lucide-react';
 import OvertimeOverview from './OvertimeOverview';
 import MonthlyOvertime from './MonthlyOvertime';
+import SickLeavePage from './SickLeavePage';
 import DutyAssignments from './DutyAssignments';
 import SundayOpenings from './SundayOpenings';
 import {getOpenSundays} from '../domain/sundays';
@@ -19,6 +21,7 @@ export default function ExtraPanels({tab,admin,actor,onChanged}){
  useEffect(()=>{if(admin||actor)void refresh();const focus=()=>void refresh();addEventListener('focus',focus);const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},60000);return()=>{removeEventListener('focus',focus);clearInterval(timer);};},[refresh,admin,actor]);
  const write=async(path,method,body)=>{try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});await refresh();onChanged?.();}catch(e){setErr(e.message);throw e;}};
  const actions={saveTemplate:(emp,tpl,original)=>write('/api/templates/'+emp,'PUT',{...tpl,...(original?{original}:{})}),saveOverride:(emp,iso,day)=>write(`/api/overrides/${emp}/${iso}`,'PUT',day),resetOverride:(emp,iso)=>write(`/api/overrides/${emp}/${iso}`,'DELETE')};
+ if(tab==='sick')return admin?<SickLeavePage onChanged={onChanged}/>:<div className="notice">Cette page est réservée à la gérante.</div>;
  if(tab==='overtime')return admin?<MonthlyOvertime/>:<div className="notice">Cette page est réservée à la gérante.</div>;
  if(!admin&&!actor)return <div className="notice">Sélectionnez votre nom en haut de l’écran pour voir vos horaires.</div>;
  if(err&&!data)return <div role="alert" className="notice">{err}<button className="textbtn" onClick={refresh}>Réessayer</button></div>;
@@ -31,14 +34,14 @@ function MySchedule({data,actor}){
  const [wk,setWk]=useState(()=>isoWeek(new Date()));const emp=data.employees.find(e=>e.id===actor);if(!emp)return <div className="notice">Ce salarié n’est plus actif.</div>;
  const plan=getWeekPlan(data.templates,data.overrides,actor,wk.year,wk.week);
  const move=n=>setWk(isoWeek(addDays(mondayOfISOWeek(wk.year,wk.week),7*n)));
- const absence=day=>data.requests.find(r=>r.employeeId===actor&&r.status==='approved'&&requestDates(r).includes(day));
+ const absence=day=>approvedAbsences(data).find(r=>r.employeeId===actor&&r.status==='approved'&&requestDates(r).includes(day));
  const bal=data.recoveryLedger.filter(l=>l.employeeId===actor).reduce((s,l)=>s+l.deltaMin,0),today=toISODate(new Date());
  return <div className="personal-week-view"><div className="my-schedule-navigation"><div className="personal-week-heading"><h2 aria-live="polite">{fmtRange(weekDates(wk.year,wk.week)[0])}</h2><p>Semaine {wk.week} · {parityOf(wk)}</p></div><div className="my-schedule-week-buttons"><button className="btn secondary schedule-week-button" onClick={()=>move(-1)}><ChevronLeft size={26} aria-hidden="true"/><span>Semaine précédente</span></button><button className="btn schedule-week-button" onClick={()=>move(1)}><span>Semaine suivante</span><ChevronRight size={26} aria-hidden="true"/></button></div><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Cette semaine</button></div>
  <ol className="schedule-timeline">{plan.map((p,i)=>{
   const day=toISODate(p.date),a=absence(day),working=(i!==6||getOpenSundays(data).includes(day))&&!a&&p.worked,ranges=working?fmtRanges(p).split(' / '):[];
   return <li key={day} className={'schedule-timeline-row '+(!working?'is-off ':'')+(a?'is-absence ':'')+(day===today?'is-today':'')} aria-current={day===today?'date':undefined}>
    <time className={'schedule-timeline-date '+(i===6?'is-sunday':'')} dateTime={day}><span>{p.date.toLocaleDateString('fr-FR',{weekday:'long'})}</span><strong>{p.date.getDate()}</strong><small>{p.date.toLocaleDateString('fr-FR',{month:'short'})}</small></time><span className="schedule-timeline-node" aria-hidden="true"/>
-   <div className="schedule-timeline-entry">{working?<><div className="schedule-timeline-ranges">{ranges.map((range,index)=><React.Fragment key={range}>{index>0&&<span className="schedule-pause"><Utensils size={14} aria-hidden="true"/>Pause</span>}<span>{range}</span></React.Fragment>)}</div>{(p.open||p.close)&&<div className="schedule-duties">{p.open&&<span>Ouverture</span>}{p.close&&<span>Fermeture</span>}</div>}</>:<span className="schedule-day-status"><Coffee size={18} aria-hidden="true"/>{a?(a.type==='recovery'?'Récupération':'Congé'):'Repos'}</span>}</div>
+   <div className="schedule-timeline-entry">{working?<><div className="schedule-timeline-ranges">{ranges.map((range,index)=><React.Fragment key={range}>{index>0&&<span className="schedule-pause"><Utensils size={14} aria-hidden="true"/>Pause</span>}<span>{range}</span></React.Fragment>)}</div>{(p.open||p.close)&&<div className="schedule-duties">{p.open&&<span>Ouverture</span>}{p.close&&<span>Fermeture</span>}</div>}</>:<span className={'schedule-day-status'+(a?.type==='sick'?' sick-absence':'')}>{a?.type==='sick'?<CalendarOff size={18} aria-hidden="true"/>:<Coffee size={18} aria-hidden="true"/>}{a?(a.type==='sick'?'Arrêt de travail':a.type==='recovery'?'Récupération':'Congé'):'Repos'}</span>}</div>
   </li>;
  })}</ol>
  <div className="schedule-recovery-summary"><Timer size={21} aria-hidden="true"/><h2>Solde de récupération</h2><strong>{format(bal)}</strong><span>disponibles</span></div></div>;
