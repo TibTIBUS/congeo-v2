@@ -61,6 +61,7 @@ h2 { font-size: 15px; margin: 18px 0 8px; }
 
 @media (max-width: 640px) {
   .topbar .subtitle { display: none; }
+  .topbar .apptitle span { display: none; } /* « V2 · prototype » masqué : la place va au titre */
   .topbar { padding: 8px 12px; gap: 8px; }
 }
 
