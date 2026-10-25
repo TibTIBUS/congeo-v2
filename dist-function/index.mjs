@@ -20,9 +20,9 @@ var __commonJS = (cb, mod) => function __require2() {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    for (let key2 of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key2) && key2 !== except)
+        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
   }
   return to;
 };
@@ -240,9 +240,9 @@ var require_mutable = __commonJS({
     function extend(target) {
       for (var i = 1; i < arguments.length; i++) {
         var source = arguments[i];
-        for (var key in source) {
-          if (hasOwnProperty.call(source, key)) {
-            target[key] = source[key];
+        for (var key2 in source) {
+          if (hasOwnProperty.call(source, key2)) {
+            target[key2] = source[key2];
           }
         }
       }
@@ -1240,13 +1240,13 @@ var require_utils2 = __commonJS({
       return await subtleCrypto.digest(hashName, text);
     }
     async function hmacSha256(keyBuffer, msg) {
-      const key = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-      return await subtleCrypto.sign("HMAC", key, textEncoder.encode(msg));
+      const key2 = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      return await subtleCrypto.sign("HMAC", key2, textEncoder.encode(msg));
     }
     async function deriveKey(password, salt, iterations) {
-      const key = await subtleCrypto.importKey("raw", textEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+      const key2 = await subtleCrypto.importKey("raw", textEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
       const params = { name: "PBKDF2", hash: "SHA-256", salt, iterations };
-      return await subtleCrypto.deriveBits(params, key, 32 * 8, ["deriveBits"]);
+      return await subtleCrypto.deriveBits(params, key2, 32 * 8, ["deriveBits"]);
     }
   }
 });
@@ -1714,35 +1714,35 @@ var require_pg_connection_string = __commonJS({
       return config;
     }
     function toConnectionOptions(sslConfig) {
-      const connectionOptions = Object.entries(sslConfig).reduce((c, [key, value]) => {
+      const connectionOptions = Object.entries(sslConfig).reduce((c, [key2, value]) => {
         if (value !== void 0 && value !== null) {
-          c[key] = value;
+          c[key2] = value;
         }
         return c;
       }, /* @__PURE__ */ Object.create(null));
       return connectionOptions;
     }
     function toClientConfig(config) {
-      const poolConfig = Object.entries(config).reduce((c, [key, value]) => {
-        if (key === "ssl") {
+      const poolConfig = Object.entries(config).reduce((c, [key2, value]) => {
+        if (key2 === "ssl") {
           const sslConfig = value;
           if (typeof sslConfig === "boolean") {
-            c[key] = sslConfig;
+            c[key2] = sslConfig;
           }
           if (typeof sslConfig === "object") {
-            c[key] = toConnectionOptions(sslConfig);
+            c[key2] = toConnectionOptions(sslConfig);
           }
         } else if (value !== void 0 && value !== null) {
-          if (key === "port") {
+          if (key2 === "port") {
             if (value !== "") {
               const v = parseInt(value, 10);
               if (isNaN(v)) {
-                throw new Error(`Invalid ${key}: ${value}`);
+                throw new Error(`Invalid ${key2}: ${value}`);
               }
-              c[key] = v;
+              c[key2] = v;
             }
           } else {
-            c[key] = value;
+            c[key2] = value;
           }
         }
         return c;
@@ -1779,17 +1779,17 @@ var require_connection_parameters = __commonJS({
     var dns = __require("dns");
     var defaults2 = require_defaults();
     var parse2 = require_pg_connection_string().parse;
-    var val = function(key, config, envVar) {
-      if (config[key]) {
-        return config[key];
+    var val = function(key2, config, envVar) {
+      if (config[key2]) {
+        return config[key2];
       }
       if (envVar === void 0) {
-        envVar = process.env["PG" + key.toUpperCase()];
+        envVar = process.env["PG" + key2.toUpperCase()];
       } else if (envVar === false) {
       } else {
         envVar = process.env[envVar];
       }
-      return envVar || defaults2[key];
+      return envVar || defaults2[key2];
     };
     var readSSLConfigFromEnvironment = function() {
       switch (process.env.PGSSLMODE) {
@@ -2504,8 +2504,8 @@ var require_serializer = __commonJS({
     var writer = new buffer_writer_1.Writer();
     var startup = (opts) => {
       writer.addInt16(3).addInt16(0);
-      for (const key of Object.keys(opts)) {
-        writer.addCString(key).addCString(opts[key]);
+      for (const key2 of Object.keys(opts)) {
+        writer.addCString(key2).addCString(opts[key2]);
       }
       writer.addCString("client_encoding").addCString("UTF8");
       const bodyBuffer = writer.addCString("").flush();
@@ -4836,9 +4836,9 @@ var require_query2 = __commonJS({
     NativeQuery.prototype.handleError = function(err) {
       const fields = this.native && this.native.pq.resultErrorFields();
       if (fields) {
-        for (const key in fields) {
-          const normalizedFieldName = errorFieldMap[key] || key;
-          err[normalizedFieldName] = fields[key];
+        for (const key2 in fields) {
+          const normalizedFieldName = errorFieldMap[key2] || key2;
+          err[normalizedFieldName] = fields[key2];
         }
       }
       if (this.callback) {
@@ -5445,13 +5445,13 @@ async function persistChanges(client, before, after) {
       await q("INSERT INTO templates(employee_id,parity,weekday,worked,start_time,end_time,pause_start,pause_end,is_open,is_close) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(employee_id,parity,weekday) DO UPDATE SET worked=$4,start_time=$5,end_time=$6,pause_start=$7,pause_end=$8,is_open=$9,is_close=$10", [emp, parity, i, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]);
     }
   }
-  for (const [key, d] of Object.entries(after.overrides)) {
-    if (!different(before.overrides[key], d)) continue;
-    const [emp, day] = key.split("|");
+  for (const [key2, d] of Object.entries(after.overrides)) {
+    if (!different(before.overrides[key2], d)) continue;
+    const [emp, day] = key2.split("|");
     await q("INSERT INTO plan_overrides(employee_id,day,worked,start_time,end_time,pause_start,pause_end,is_open,is_close) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(employee_id,day) DO UPDATE SET worked=$3,start_time=$4,end_time=$5,pause_start=$6,pause_end=$7,is_open=$8,is_close=$9", [emp, day, !!d.worked, d.start || null, d.end || null, d.pauseStart || null, d.pauseEnd || null, !!d.open, !!d.close]);
   }
-  for (const key of Object.keys(before.overrides)) if (!(key in after.overrides)) {
-    const [emp, day] = key.split("|");
+  for (const key2 of Object.keys(before.overrides)) if (!(key2 in after.overrides)) {
+    const [emp, day] = key2.split("|");
     await q("DELETE FROM plan_overrides WHERE employee_id=$1 AND day=$2", [emp, day]);
   }
   for (const r of after.requests) {
@@ -5480,7 +5480,7 @@ async function persistChanges(client, before, after) {
     await q("DELETE FROM blocks");
     for (const b of after.blocks) await q("INSERT INTO blocks(id,label,start_date,end_date) VALUES($1,$2,$3,$4)", [b.id, b.label, b.start, b.end]);
   }
-  for (const [key, value] of Object.entries(after.settings || {})) if (before.settings?.[key] !== value) await q("INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2", [key, String(value)]);
+  for (const [key2, value] of Object.entries(after.settings || {})) if (before.settings?.[key2] !== value) await q("INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2", [key2, String(value)]);
   for (const o of after.outbox || []) {
     const prev = (before.outbox || []).find((x) => x.id === o.id);
     if (!different(prev, o)) continue;
@@ -5599,8 +5599,8 @@ function parityOf(iso3) {
 function getDayPlan(templates, overrides, employeeId, date) {
   const iso3 = toISODate(date);
   const wd = (date.getDay() + 6) % 7;
-  const key = `${employeeId}|${iso3}`;
-  if (overrides[key]) return overrides[key];
+  const key2 = `${employeeId}|${iso3}`;
+  if (overrides[key2]) return overrides[key2];
   const p = parityOf(isoWeek(date));
   const t = templates[employeeId]?.[p]?.[wd];
   return t || { worked: false, start: null, end: null, pauseStart: null, pauseEnd: null, open: false, close: false };
@@ -5897,7 +5897,7 @@ function getOpenSundays(data) {
   return Array.isArray(dates2) ? [...new Set(dates2.filter(isSunday))].sort() : [];
 }
 function sundaySnapshot(data, date) {
-  return { open: getOpenSundays(data).includes(date), employees: data.employees.filter((e) => e.active !== false).map((e) => e.id).sort(), plans: Object.fromEntries(Object.entries(data.overrides || {}).filter(([key]) => key.endsWith("|" + date)).sort(([a], [b]) => a.localeCompare(b))) };
+  return { open: getOpenSundays(data).includes(date), employees: data.employees.filter((e) => e.active !== false).map((e) => e.id).sort(), plans: Object.fromEntries(Object.entries(data.overrides || {}).filter(([key2]) => key2.endsWith("|" + date)).sort(([a], [b]) => a.localeCompare(b))) };
 }
 
 // server/restored.js
@@ -6222,7 +6222,7 @@ function applySundayOpening(db, payload, cleanDay2) {
   const recoveries = db.requests.filter((r) => r.status === "approved" && r.type === "recovery" && requestDates(r).includes(date));
   if (!open) {
     if (recoveries.length) throw Error("Une r\xE9cup\xE9ration est valid\xE9e ce dimanche. Corrigez ou annulez cette r\xE9cup\xE9ration avant de fermer la journ\xE9e.");
-    for (const key of Object.keys(db.overrides)) if (key.endsWith("|" + date)) delete db.overrides[key];
+    for (const key2 of Object.keys(db.overrides)) if (key2.endsWith("|" + date)) delete db.overrides[key2];
     db.settings.sundayOpenings = JSON.stringify(getOpenSundays(db).filter((day) => day !== date));
     return;
   }
@@ -6235,7 +6235,7 @@ function applySundayOpening(db, payload, cleanDay2) {
     if (!day) throw Error("V\xE9rifiez les horaires du matin et de l\u2019apr\xE8s-midi.");
     if (recoveries.some((r) => r.employeeId === row.employeeId)) {
       const previous = db.overrides[row.employeeId + "|" + date];
-      if (["worked", "start", "end", "pauseStart", "pauseEnd"].some((key) => (previous?.[key] ?? null) !== (day[key] ?? null))) throw Error("Une r\xE9cup\xE9ration est valid\xE9e pour ce salari\xE9. Corrigez-la avant de modifier ses horaires.");
+      if (["worked", "start", "end", "pauseStart", "pauseEnd"].some((key2) => (previous?.[key2] ?? null) !== (day[key2] ?? null))) throw Error("Une r\xE9cup\xE9ration est valid\xE9e pour ce salari\xE9. Corrigez-la avant de modifier ses horaires.");
     }
     rows.push({ employeeId: row.employeeId, day });
   }
@@ -6245,7 +6245,7 @@ function applySundayOpening(db, payload, cleanDay2) {
 
 // src/domain/duties.js
 var dutyState = (day) => ({ worked: !!day?.worked, open: !!day?.open, close: !!day?.close });
-var sameDutyState = (a, b) => ["worked", "open", "close"].every((key) => a?.[key] === b?.[key]);
+var sameDutyState = (a, b) => ["worked", "open", "close"].every((key2) => a?.[key2] === b?.[key2]);
 function applyDutyAssignments(db, payload) {
   if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
   const { parity, changes } = payload;
@@ -6254,9 +6254,9 @@ function applyDutyAssignments(db, payload) {
   for (const change of changes) {
     const employee = db.employees.find((e) => e.id === change?.employeeId && e.active !== false), weekday = change?.weekday;
     if (!employee || !Number.isInteger(weekday) || weekday < 0 || weekday > 5) throw Error("Choisissez un salari\xE9 actif et un jour du lundi au samedi.");
-    const key = employee.id + "|" + weekday;
-    if (seen.has(key)) throw Error("Une journ\xE9e ne peut appara\xEEtre qu\u2019une fois.");
-    seen.add(key);
+    const key2 = employee.id + "|" + weekday;
+    if (seen.has(key2)) throw Error("Une journ\xE9e ne peut appara\xEEtre qu\u2019une fois.");
+    seen.add(key2);
     if (["open", "close"].some((k) => typeof change[k] !== "boolean") || ["worked", "open", "close"].some((k) => typeof change.original?.[k] !== "boolean")) throw Error("Cases Ouverture et Fermeture invalides.");
     const day = db.templates[employee.id]?.[parity]?.[weekday];
     if (!sameDutyState(dutyState(day), change.original)) throw Error(`La journ\xE9e de ${employee.name} a chang\xE9. Rechargez les affectations avant d\u2019enregistrer.`);
@@ -6268,6 +6268,45 @@ function applyDutyAssignments(db, payload) {
     update.day.close = update.close;
   }
   return updates.length;
+}
+
+// server/monthly-overtime.js
+function validMonth(month) {
+  return typeof month === "string" && /^(20\d{2})-(0[1-9]|1[0-2])$/.test(month);
+}
+var key = (month) => "monthlyOvertime:" + month;
+function records(db, month) {
+  if (!validMonth(month)) throw Error("Choisissez un mois valide.");
+  return JSON.parse(db.settings?.[key(month)] || "{}");
+}
+function monthlyOvertime(db, month) {
+  const saved = records(db, month);
+  const rows = db.employees.filter((e) => e.active !== false || Object.hasOwn(saved, e.id)).map((e) => ({ employeeId: e.id, name: saved[e.id]?.name || e.name, active: e.active !== false, entry: saved[e.id] || null }));
+  rows.sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  return { month, rows };
+}
+function saveMonthlyOvertime(db, payload) {
+  if (payload?.admin !== true) throw Error("Cette page est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+  const saved = records(db, payload.month), changes = payload.changes;
+  if (!Array.isArray(changes) || changes.length > db.employees.length) throw Error("Tableau mensuel invalide.");
+  const seen = /* @__PURE__ */ new Set();
+  const updates = changes.map((c) => {
+    const employee = db.employees.find((e) => e.id === c.employeeId);
+    if (!employee || employee.active === false && !saved[c.employeeId] || seen.has(c.employeeId)) throw Error("Salari\xE9 invalide ou pr\xE9sent plusieurs fois.");
+    seen.add(c.employeeId);
+    if (JSON.stringify(c.original) !== JSON.stringify(saved[c.employeeId] || null)) throw Error("Les heures de " + employee.name + " ont chang\xE9. Rechargez le mois avant d\u2019enregistrer.");
+    if (c.entry === null) return { employeeId: c.employeeId, entry: null };
+    const { minutes, note } = c.entry || {};
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 6e4 || typeof note !== "string" || note.length > 500) throw Error("Indiquez une dur\xE9e positive ou nulle et une observation de 500 caract\xE8res maximum.");
+    return { employeeId: c.employeeId, entry: { minutes, note: note.trim(), name: saved[c.employeeId]?.name || employee.name } };
+  });
+  for (const c of updates) {
+    if (c.entry === null) delete saved[c.employeeId];
+    else saved[c.employeeId] = c.entry;
+  }
+  db.settings ??= {};
+  db.settings[key(payload.month)] = JSON.stringify(saved);
+  return monthlyOvertime(db, payload.month);
 }
 
 // server/index.js
@@ -6305,6 +6344,25 @@ async function handleApi(store2, method, url, body) {
   if (restored) return restored;
   const p = url.pathname;
   let m;
+  if (p === "/api/monthly-overtime") {
+    if (method === "GET") {
+      if (url.searchParams.get("admin") !== "1") return { code: 403, obj: { error: "Cette page est r\xE9serv\xE9e \xE0 la g\xE9rante." } };
+      try {
+        return { code: 200, obj: monthlyOvertime(await store2.getDoc(), url.searchParams.get("month")) };
+      } catch (e) {
+        return { code: 400, obj: { error: e.message } };
+      }
+    }
+    if (method === "PUT") {
+      if (body?.admin !== true) return { code: 403, obj: { error: "Cette page est r\xE9serv\xE9e \xE0 la g\xE9rante." } };
+      try {
+        const result = await store2.transact((db2) => saveMonthlyOvertime(db2, body));
+        return { code: 200, obj: result };
+      } catch (e) {
+        return { code: 409, obj: { error: e.message || "Impossible d\u2019enregistrer le mois." } };
+      }
+    }
+  }
   if (p === "/api/sundays" && method === "PUT") {
     try {
       await store2.transact((db2) => {

@@ -21,6 +21,7 @@ import { leaveBlockedReason } from "../src/domain/blocks.js";
 import {getOpenSundays} from '../src/domain/sundays.js';
 import {applySundayOpening} from './sundays.js';
 import { applyDutyAssignments } from "../src/domain/duties.js";
+import {monthlyOvertime,saveMonthlyOvertime} from './monthly-overtime.js';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISODATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -64,6 +65,19 @@ export async function handleApi(store, method, url, body) {
   const restored=await restoredApi(store,method,url,body);if(restored)return restored;
   const p = url.pathname;
   let m;
+
+  if(p==='/api/monthly-overtime'){
+    if(method==='GET'){
+      if(url.searchParams.get('admin')!=='1')return {code:403,obj:{error:'Cette page est réservée à la gérante.'}};
+      try{return {code:200,obj:monthlyOvertime(await store.getDoc(),url.searchParams.get('month'))};}
+      catch(e){return {code:400,obj:{error:e.message}};}
+    }
+    if(method==='PUT'){
+      if(body?.admin!==true)return {code:403,obj:{error:'Cette page est réservée à la gérante.'}};
+      try{const result=await store.transact(db=>saveMonthlyOvertime(db,body));return {code:200,obj:result};}
+      catch(e){return {code:409,obj:{error:e.message||'Impossible d’enregistrer le mois.'}};}
+    }
+  }
 
   if(p==='/api/sundays'&&method==='PUT'){
     try{await store.transact(db=>{db.settings??={};applySundayOpening(db,body,cleanDay);});return {code:200,obj:{ok:true}};}
