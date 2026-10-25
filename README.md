@@ -4,11 +4,16 @@ Planning et congés pour une petite équipe (5 salariés fictifs) : gabarits
 semaines paires/impaires, exceptions, pause du midi, demandes de congés et
 récupérations avec validation admin, alertes de couverture ouverture/fermeture.
 
-**Données 100 % fictives.** Deux modes :
+**Données 100 % fictives.** Accès identique à la V1 : **pas de connexion** —
+le salarié choisit son nom (mémorisé dans son navigateur) et l'administration
+est à une adresse séparée (`#/admin`), sans lien depuis l'espace salarié.
 
-- **Démo** (`npm run dev`) : tout dans le navigateur (localStorage), aucun compte.
-- **Serveur** (`npm run build && npm start`) : API Node + sessions + persistance
-  JSON, ou PostgreSQL si `DATABASE_URL` est défini (sinon Postgres local possible).
+Deux modes :
+
+- **Démo** (`npm run dev`, ou la version statique publiée) : tout dans le
+  navigateur (localStorage), aucune sauvegarde partagée entre appareils.
+- **Serveur** (`npm run build && npm start`) : API Node + persistance JSON,
+  ou PostgreSQL si `DATABASE_URL` est défini. Même accès sans connexion.
 
 ## Commandes
 
@@ -21,11 +26,8 @@ npm run test:ui    # vérifications visuelles (Playwright)
 npm run test:e2e   # workflows bout en bout contre le serveur réel
 ```
 
-Comptes de démo (mode serveur) : `admin@echoppe.test` / `hugo@echoppe.test`
-etc., mot de passe `demo1234` — fictifs, à changer pour tout usage réel.
-
 ## Mise en ligne
 
-Voir **DEPLOY.md** : la démo statique peut partir sur GitHub Pages (gratuit,
-dépôt public requis) ; la version complète avec base nécessite un hébergement
-Node + Postgres hors GitHub.
+Voir **DEPLOY.md** : la démo statique est publiée sur GitHub Pages (gratuit,
+dépôt public) ; la version avec sauvegarde partagée nécessite un projet Neon
+séparé (API en Neon Function + base Postgres), comme la V1.

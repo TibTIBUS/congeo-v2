@@ -10,7 +10,7 @@ import pg from "pg";
 import { createPgStore } from "../server/db-pg.js";
 
 let epg, store, client2;
-const PORT = 55439;
+const PORT = 55000 + Math.floor(Math.random() * 2000); // port aléatoire : aucun Postgres éphémère résiduel d'un run précédent
 
 beforeAll(async () => {
   epg = new EmbeddedPostgres({
@@ -39,8 +39,6 @@ describe("stockage Postgres réel (local éphémère)", () => {
     const doc = await store.getDoc();
     expect(doc.employees).toHaveLength(5);
     expect(doc.templates.hugo.paire[0].pauseStart).toBe("12:00");
-    const u = await store.findUserByEmail("admin@echoppe.test");
-    expect(u.role).toBe("admin");
   }, 30000);
 
   it("deux validations simultanées : une seule déduction (verrou réel)", async () => {
@@ -52,9 +50,10 @@ describe("stockage Postgres réel (local éphémère)", () => {
     const [[c1, b1], [c2, b2]] = await Promise.all([store.validateRequest(r2.id), store2.validateRequest(r2.id)]);
     expect([c1, c2].sort()).toEqual([200, 200]);
     expect([b1.idempotent, b2.idempotent].filter(Boolean)).toHaveLength(1); // l'un déduit, l'autre est no-op
+    const realOne = [b1, b2].find((b) => !b.idempotent); // la réponse idempotente porte le deductedMin d'origine : ne pas la compter
+    const deducted = realOne.request.deductedMin || 0;
     const docAfter = await store.getDoc();
     const balAfter = docAfter.recoveryLedger.filter((l) => l.employeeId === "hugo").reduce((a, l) => a + l.deltaMin, 0);
-    const deducted = (b1.request.deductedMin || 0) + (b2.idempotent ? 0 : b2.request.deductedMin || 0);
     expect(balAfter).toBe(balBefore - deducted);
     expect(deducted).toBeGreaterThan(0);
   }, 30000);

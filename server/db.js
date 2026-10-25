@@ -15,22 +15,14 @@ export function openDb(path) {
   let db;
   const persist = () => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(db, null, 2)); };
   // Version de schéma/données : une base ancienne est régénérée depuis le seed
-  // (v2 = badges O/F fictifs alignés sur la règle 2 O / 2 F du 25 oct 12h27).
-  const SEED_VERSION = 2;
+  // (v3 = comptes/sessions retirés, accès sans connexion comme la V1, 25 oct 12h57).
+  const SEED_VERSION = 3;
   if (existsSync(path)) db = JSON.parse(readFileSync(path, "utf8"));
   if (!db || db.seedVersion !== SEED_VERSION) { db = { ...seedDb(), seedVersion: SEED_VERSION }; persist(); }
   const mutate = (fn) => { const r = fn(db); persist(); return r; };
   return {
     // Document complet (petit volume : boutique de 5 salariés)
     getDoc: async () => db,
-    // --- comptes et sessions ---
-    findUserByEmail: async (email) => db.users.find((x) => x.email === email) || null,
-    getSessionUser: async (token) => {
-      const s = db.sessions[token];
-      return s ? db.users.find((u) => u.id === s.userId) || null : null;
-    },
-    createSession: async (token, userId) => mutate((d) => { d.sessions[token] = { userId, at: new Date().toISOString() }; }),
-    deleteSession: async (token) => mutate((d) => { delete d.sessions[token]; }),
     // --- mutations métier ---
     putTemplate: async (empId, tpl) => mutate((d) => { d.templates = { ...d.templates, [empId]: tpl }; }),
     putOverride: async (empId, day, d2) => mutate((d) => { d.overrides = { ...d.overrides, [`${empId}|${day}`]: d2 }; }),

@@ -4,17 +4,11 @@ import { createPgMemStore } from "../server/db-pg.js";
 // Stockage Postgres vérifié via pg-mem (émulation en processus, aucun service externe).
 // Limites : pg-mem ne reproduit pas le verrouillage concurrent réel — voir pg-real.test.js.
 describe("stockage Postgres (pg-mem)", () => {
-  it("charge le schéma et le seed fictif : soldes et sessions", async () => {
+  it("charge le schéma et le seed fictif : soldes", async () => {
     const s = await createPgMemStore();
     const doc = await s.getDoc();
     expect(doc.employees).toHaveLength(5);
     expect(doc.recoveryLedger.filter((l) => l.employeeId === "hugo").reduce((a, l) => a + l.deltaMin, 0)).toBe(14 * 60);
-    const u = await s.findUserByEmail("hugo@echoppe.test");
-    expect(u.role).toBe("employee");
-    await s.createSession("tok1", u.id);
-    expect((await s.getSessionUser("tok1")).employeeId).toBe("hugo");
-    await s.deleteSession("tok1");
-    expect(await s.getSessionUser("tok1")).toBeNull();
   });
 
   it("validation récupération atomique : décompte lié, idempotente", async () => {

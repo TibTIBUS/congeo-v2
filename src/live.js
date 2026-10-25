@@ -1,15 +1,19 @@
-// Store "live" : même forme de données que la démo, mais servies par l'API
-// authentifiée. Le serveur filtre selon le rôle (un salarié ne reçoit que ses
-// données) ; chaque action relance un bootstrap après écriture.
+// Store "live" : même forme de données que la démo, mais servies par l'API.
+// Identité DÉCLARÉE (modèle V1, pas de connexion) : ?employee=<id> pour un
+// salarié, ?as=admin depuis l'adresse admin séparée. Chaque action relance
+// un bootstrap après écriture.
 import { useSyncExternalStore } from "react";
 import { api } from "./api.js";
 
 let state = null;
+let identity = null; // { admin: true } ou { employeeId }
 let listeners = [];
 const emit = () => listeners.forEach((l) => l());
 
+export function setIdentity(id) { identity = id; }
 export async function refreshLive() {
-  state = await api("/api/bootstrap");
+  if (!identity) return;
+  state = await api(identity.admin ? "/api/bootstrap?as=admin" : `/api/bootstrap?employee=${encodeURIComponent(identity.employeeId)}`);
   emit();
 }
 export function useLive() {

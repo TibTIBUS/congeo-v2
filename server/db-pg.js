@@ -2,8 +2,8 @@
 // Meme interface async que server/db.js (JSON local) : le routeur ne sait pas
 // quel stockage est derriere. La validation de récupération est une vraie
 // transaction SQL : verrou de ligne (SELECT … FOR UPDATE) + règle métier +
-// écritures liées, idempotente. La portée "salarié = ses données seules" reste
-// appliquée par le routeur ; des policies RLS pourront durcir la base plus tard.
+// écritures liées, idempotente. L'accès suit le modèle V1 (pas de connexion : nom choisi, admin à
+// adresse séparée) ; le filtrage des données livrées reste fait par le routeur.
 //
 // Vérifié localement de deux façons, sans service externe ni déploiement :
 // - pg-mem (émulation en processus) dans tests/pg.test.js ;
@@ -27,7 +27,6 @@ const reqFromRow = (r) => ({
   ...(r.decided_at ? { decidedAt: r.decided_at } : {}),
 });
 const ledgerFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaMin: l.delta_min, reason: l.reason, at: l.at });
-const userFromRow = (u) => (u ? { id: u.id, email: u.email, passwordHash: u.password, name: u.name, role: u.role, employeeId: u.employee_id } : null);
 
 // client : client pg déjà connecté (vrai pg ou pg-mem). seedIfEmpty : injecte
 // les données fictives si la base est vide (démo/test), à désactiver en réel.
@@ -53,8 +52,6 @@ export async function createPgStore(client, { seedIfEmpty = true } = {}) {
         [r.employeeId, r.type, r.dateStart ?? null, r.dateEnd ?? null, r.dates ?? null, r.status, r.createdAt]);
     for (const l of s.recoveryLedger)
       await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason,at) VALUES ($1,$2,$3,$4)", [l.employeeId, l.deltaMin, l.reason, l.at]);
-    for (const u of s.users)
-      await client.query("INSERT INTO app_users (id,email,password,name,role,employee_id) VALUES ($1,$2,$3,$4,$5,$6)", [u.id, u.email, u.passwordHash, u.name, u.role, u.employeeId]);
   }
 
   const templatesOf = async (empId) => {
@@ -77,12 +74,6 @@ export async function createPgStore(client, { seedIfEmpty = true } = {}) {
       return { employees, templates, overrides, requests, recoveryLedger };
     },
 
-    // --- comptes et sessions ---
-    findUserByEmail: async (email) => userFromRow((await q("SELECT * FROM app_users WHERE email=$1", [email]))[0]),
-    getSessionUser: async (token) =>
-      userFromRow((await q("SELECT u.* FROM sessions s JOIN app_users u ON u.id = s.user_id WHERE s.token=$1", [token]))[0]),
-    createSession: async (token, userId) => client.query("INSERT INTO sessions (token,user_id) VALUES ($1,$2)", [token, userId]),
-    deleteSession: async (token) => client.query("DELETE FROM sessions WHERE token=$1", [token]),
 
     // --- mutations métier ---
     async putTemplate(empId, tpl) {

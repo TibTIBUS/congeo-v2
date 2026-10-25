@@ -70,18 +70,3 @@ CREATE TABLE IF NOT EXISTS recovery_ledger (
 CREATE INDEX ON recovery_ledger (employee_id);
 CREATE INDEX ON requests (employee_id, status);
 
--- Comptes et sessions (vraie V2 authentifiée). Mots de passe hachés (scrypt).
-CREATE TABLE IF NOT EXISTS app_users (
-  id          text PRIMARY KEY,
-  email       text NOT NULL UNIQUE,
-  password    text NOT NULL,   -- haché, jamais en clair
-  name        text NOT NULL,
-  role        text NOT NULL CHECK (role IN ('admin','employee')),
-  employee_id text REFERENCES employees(id)  -- NULL pour l'admin
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  token      text PRIMARY KEY,
-  user_id    text NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
