@@ -14,7 +14,7 @@ export function Status({ s }) {
   return <span className={`st ${s}`}>{t}</span>;
 }
 export function PariteBadge({ parite, week }) {
-  return <span className="mut" style={{ fontSize: 12 }}>Semaine {week} · <span className="parite">SEMAINE {parite.toUpperCase()}</span></span>;
+  return <span className="mut" style={{ fontSize: 12 }}>Semaine {week} · <span className="parite">SEMAINE {parite==='paire'?'A':'B'}</span></span>;
 }
 export function WeekNav({ onPrev, onNext, children }) {
   return <div className="weeknav">
