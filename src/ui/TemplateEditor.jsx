@@ -8,7 +8,7 @@ const PARITIES=['paire','impaire'];
 const clone=template=>Object.fromEntries(PARITIES.map(parity=>[parity,Array.from({length:7},(_,i)=>({...OFF,...template?.[parity]?.[i]}))]));
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(value||'');
 function TimeField({day,index,field,label,parity,onChange}){
- return <label><span>{label}</span><input type="time" aria-label={`${DAY_NAMES_LONG[index]} · ${label} · semaine ${parity}`} value={day[field]||''} onChange={event=>onChange(index,{[field]:event.target.value||null})} required/></label>;
+ return <label><span>{label}</span><input type="time" aria-label={`${DAY_NAMES_LONG[index]} · ${label} · semaine ${parity==='paire'?'A':'B'}`} value={day[field]||''} onChange={event=>onChange(index,{[field]:event.target.value||null})} required/></label>;
 }
 
 export default function TemplateEditor({data,actions,onReload=async()=>true}){
@@ -25,7 +25,7 @@ export default function TemplateEditor({data,actions,onReload=async()=>true}){
   const d=template[parity][index];
   setDay(index,worked?{...defaultWorkTemplates().paire[index],...Object.fromEntries(Object.entries(d).filter(([,value])=>value!==null)),worked:true}:{worked:false,open:false,close:false});
  };
- const copyWeek=()=>{update(t=>{t[other]=t[parity].map(d=>({...d}));return t;});setMessage(`Semaine ${parity} copiée vers la semaine ${other}. Enregistrez pour appliquer les changements.`);};
+ const copyWeek=()=>{update(t=>{t[other]=t[parity].map(d=>({...d}));return t;});setMessage(`Semaine ${parity==='paire'?'A':'B'} copiée vers la semaine ${other==='paire'?'A':'B'}. Enregistrez pour appliquer les changements.`);};
  async function save(event){
   event.preventDefault();setError('');setMessage('');
   for(const par of PARITIES)for(let i=0;i<7;i++){
@@ -48,11 +48,11 @@ export default function TemplateEditor({data,actions,onReload=async()=>true}){
   finally{setSaving(false);}
  }
  return <form className="template-editor" onSubmit={save} noValidate>
-  <p className="template-intro">Renseignez le matin et l’après-midi. Ces horaires se répètent selon la semaine paire ou impaire.</p>
+  <p className="template-intro">Renseignez le matin et l’après-midi. Ces horaires se répètent selon la semaine A ou B.</p>
   <fieldset disabled={saving}>
    <div className="template-controls">
     <label className="template-employee">Salarié<select aria-label="Salarié des semaines types" value={empId} onChange={event=>{setEmpId(event.target.value);setError('');setMessage('');}}>{data.employees.map(e=><option key={e.id} value={e.id}>{e.name}{drafts[e.id]?' · à enregistrer':''}</option>)}</select></label>
-    <div className="template-parities" role="group" aria-label="Semaine à modifier">{PARITIES.map(par=><button type="button" key={par} aria-pressed={parity===par} onClick={()=>setParity(par)}>Semaine {par}</button>)}</div>
+    <div className="template-parities" role="group" aria-label="Semaine à modifier">{PARITIES.map(par=><button type="button" key={par} aria-pressed={parity===par} onClick={()=>setParity(par)}>Semaine {par==='paire'?'A':'B'}</button>)}</div>
    </div>
    <div className="template-week-context"><p>Exemple : {fmtRange(exampleMonday)}.</p>{dirty&&<span>Modifications à enregistrer</span>}</div>
    <div className="template-table-wrap"><table className="template-table">
@@ -64,12 +64,12 @@ export default function TemplateEditor({data,actions,onReload=async()=>true}){
       <th scope="row"><strong>{DAY_NAMES_LONG[i]}</strong>{i===6&&<small>Magasin fermé</small>}{day.worked&&<label className="template-continuous"><input type="checkbox" checked={!split} aria-label={`${DAY_NAMES_LONG[i]} · journée continue`} onChange={event=>setDay(i,event.target.checked?{pauseStart:null,pauseEnd:null}:{pauseStart:'12:00',pauseEnd:'14:00'})}/>Sans coupure</label>}</th>
       <td className="template-day-state"><select aria-label={`${DAY_NAMES_LONG[i]} · travaillé ou repos`} value={day.worked?'work':'rest'} disabled={i===6} onChange={event=>setWorked(i,event.target.value==='work')}><option value="work">Travaillé</option><option value="rest">Repos</option></select></td>
       {day.worked?<><td className="template-period-cell"><div className="template-period"><span className="template-mobile-period">{split?'Matin':'Journée continue'}</span><div className="template-times"><TimeField day={day} index={i} parity={parity} onChange={setDay} field="start" label="Arrivée"/><TimeField day={day} index={i} parity={parity} onChange={setDay} field={split?'pauseStart':'end'} label={split?'Départ matin':'Départ'}/></div></div></td><td className="template-period-cell">{split?<div className="template-period"><span className="template-mobile-period">Après-midi</span><div className="template-times"><TimeField day={day} index={i} parity={parity} onChange={setDay} field="pauseEnd" label="Retour"/><TimeField day={day} index={i} parity={parity} onChange={setDay} field="end" label="Départ"/></div></div>:<span className="template-rest-caption">Sans coupure</span>}</td></>:<td colSpan={2} className="template-rest-caption template-period-cell">Repos · aucun horaire à renseigner</td>}
-      {['open','close'].map((key,index)=><td key={key} className="template-duty-cell"><label className="template-duty"><input type="checkbox" aria-label={`${DAY_NAMES_LONG[i]} · ${index?'Fermeture':'Ouverture'} · semaine ${parity}`} checked={day.worked&&!!day[key]} disabled={!day.worked} onChange={event=>setDay(i,{[key]:event.target.checked})}/><span>{index?'Fermeture':'Ouverture'}</span></label></td>)}
+      {['open','close'].map((key,index)=><td key={key} className="template-duty-cell"><label className="template-duty"><input type="checkbox" aria-label={`${DAY_NAMES_LONG[i]} · ${index?'Fermeture':'Ouverture'} · semaine ${parity==='paire'?'A':'B'}`} checked={day.worked&&!!day[key]} disabled={!day.worked} onChange={event=>setDay(i,{[key]:event.target.checked})}/><span>{index?'Fermeture':'Ouverture'}</span></label></td>)}
      </tr>;
     })}</tbody>
    </table></div>
    <p className="template-role-hint">Cochez les personnes qui assurent l’ouverture ou la fermeture. Les jours de repos ne sont pas comptés.</p>
-   <div className="template-actions"><button type="button" className="btn secondary" onClick={copyWeek}><Copy size={17} aria-hidden="true"/>Copier vers la semaine {other}</button><button type="submit" className="btn" disabled={!dirty}><Check size={18} aria-hidden="true"/>{saving?'Enregistrement…':'Enregistrer les horaires'}</button></div>
+   <div className="template-actions"><button type="button" className="btn secondary" onClick={copyWeek}><Copy size={17} aria-hidden="true"/>Copier vers la semaine {other==='paire'?'A':'B'}</button><button type="submit" className="btn" disabled={!dirty}><Check size={18} aria-hidden="true"/>{saving?'Enregistrement…':'Enregistrer les horaires'}</button></div>
   </fieldset>
   {error&&<div className="template-error" role="alert"><p>{error}</p><button type="button" className="textbtn" disabled={saving} onClick={reloadTemplate}>Recharger les horaires enregistrés</button></div>}{message&&<p className="template-message" role="status">{message}</p>}
  </form>;
