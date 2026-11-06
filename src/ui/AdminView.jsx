@@ -22,7 +22,7 @@ export default function AdminView({ data, actions, fictif = false }) {
   });
   return <div>
     <div className="tabs">
-      {[["planning", "Planning"], ["gabarits", "Semaines paire/impaire"], ["demandes", "Demandes"], ["export", "Export annuel"]].map(([k, l]) =>
+      {[["planning", "Planning"], ["gabarits", "Semaines A/B"], ["demandes", "Demandes"], ["export", "Export annuel"]].map(([k, l]) =>
         <button key={k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
     </div>
     {tab === "planning" && <Planning data={data} actions={actions} fictif={fictif} />}
@@ -40,7 +40,7 @@ export function Planning({data,actions}){
  const cov=weekCoverage(plansBy,shopDays),warningDays=new Set(cov.warnings.map(w=>w.dayIdx));
  const move=n=>setWk(isoWeek(addDays(mondayOfISOWeek(wk.year,wk.week),n*7)));
  const absence=(emp,day)=>approvedAbsences(data).find(r=>r.employeeId===emp&&r.status==='approved'&&requestDates(r).includes(day));
- return <div className="team-planning"><div className="team-week-heading"><div><h2>{fmtRange(dates[0])}</h2><p className="muted">Semaine {wk.week} · {parityOf(wk)}</p></div><WeekNav onPrev={()=>move(-1)} onNext={()=>move(1)}><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Cette semaine</button></WeekNav></div>
+ return <div className="team-planning"><div className="team-week-heading"><div><h2>{fmtRange(dates[0])}</h2><p className="muted">Semaine {wk.week} · {parityOf(wk)==='paire'?'A':'B'}</p></div><WeekNav onPrev={()=>move(-1)} onNext={()=>move(1)}><button className="textbtn" onClick={()=>setWk(isoWeek(new Date()))}>Cette semaine</button></WeekNav></div>
  <div className="coverage-summary"><span>{data.employees.length} salariés</span><span>Ouvertures couvertes : <strong>{cov.openingsCovered}/{cov.days}</strong></span><span>Fermetures couvertes : <strong>{cov.closingsCovered}/{cov.days}</strong></span></div>
  {warningDays.size>0?<div className="coverage-notice" role="status"><strong>⚠ {warningDays.size} journée{warningDays.size>1?'s':''} à compléter</strong><span>Les alertes figurent sous chaque jour. Prévoyez au moins {MIN_COVERAGE} personnes à l’ouverture et {MIN_COVERAGE} à la fermeture.</span></div>:<div className="coverage-notice complete" role="status">Toutes les ouvertures et fermetures sont couvertes cette semaine.</div>}
  <div className="team-grid-wrap"><table className="team-grid"><colgroup><col className="employee-col"/>{shopDays.map(i=><col key={i}/>)}</colgroup><thead><tr><th scope="col" className="team-employee-head">Salarié</th>{shopDays.map(i=>{const c=dayCoverage(plansBy,i);return <th scope="col" key={i} className={warningDays.has(i)?'day-needs-coverage':''}><span className="team-day-heading">{dates[i].toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'short'})}</span><CoverageStatus label="Ouverture" count={c.openings}/><CoverageStatus label="Fermeture" count={c.closings}/></th>;})}</tr></thead>
