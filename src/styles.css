@@ -106,3 +106,9 @@ h1{letter-spacing:-.5px}
 .sick-page,.sick-page>.panel{min-width:0;max-width:100%}.sick-form select{width:100%;min-width:0}.sick-form .date-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.sick-page .section-heading h2{min-width:0}.sick-table-wrap{max-width:100%}
 @media(max-width:480px){.sick-form .date-fields{grid-template-columns:minmax(0,1fr);gap:14px}.sick-table{min-width:0;table-layout:fixed}.sick-table th:first-child{width:44%}.sick-table th,.sick-table td{overflow-wrap:anywhere}.page-heading-actions{flex-direction:column;align-items:stretch}}
 .sick-page .sick-show-cancelled,.sick-page .sick-year{display:flex;flex-direction:row;align-items:center;gap:8px}.sick-page .sick-show-cancelled input{width:18px;flex-shrink:0}
+
+.sidebar nav button .nav-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sidebar nav button .nav-text small{font-size:.72rem;color:#AEB4BA;font-weight:500;line-height:1.25}
+.sidebar nav button.active .nav-text small{color:#2B6461}
+.subnav{margin:-14px 0 22px}
+@media(max-width:800px){.subnav{margin:0 0 18px}.subnav [data-slot=tabs-list]{max-width:100%;overflow-x:auto}}
