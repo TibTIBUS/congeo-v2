@@ -1,3 +1,4 @@
+import {schoolPeriods,saveSchoolPeriod} from '../src/domain/school.js';
 import {holidayCalendar,closedHolidayDates,holidayRequestDays,isClosedHoliday,holidayPreview,saveHolidayCalendar} from '../src/domain/publicHolidays.js';
 import {dutyBackups,storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 // Serveur local de la V2 (test uniquement, aucun deploiement).
@@ -52,6 +53,7 @@ function cleanTemplate(t) {
 function bootstrapFor(db, empId) {
   return {
     employeeId: empId,
+    schoolPeriods:schoolPeriods(db).filter(p=>p.employeeId===empId),
     closedHolidays:closedHolidayDates(db),
     openSundays:getOpenSundays(db),
     employees: db.employees.filter((e) => e.id === empId),
@@ -73,6 +75,13 @@ export async function handleApi(store, method, url, body) {
   const p = url.pathname;
   let m;
 
+  if(p==='/api/school'){
+    if((method==='GET'&&url.searchParams.get('admin')!=='1')||(method==='PUT'&&body?.admin!==true))return {code:403,obj:{error:'Cette page est réservée à la gérante.'}};
+    try{
+      if(method==='PUT')await store.transact(db=>saveSchoolPeriod(db,body));
+      if(method==='GET'||method==='PUT'){const db=await store.getDoc();return {code:200,obj:{employees:db.employees.map(e=>({id:e.id,name:e.name,active:e.active!==false})),periods:schoolPeriods(db)}};}
+    }catch(e){return {code:409,obj:{error:e.message}};}
+  }
   if(p==='/api/sick-leaves'){
     if(method==='GET'){
       if(url.searchParams.get('admin')!=='1')return {code:403,obj:{error:'Cette page est réservée à la gérante.'}};
@@ -278,4 +287,4 @@ export function createApp(storeOrPath, distDir) {
     const out = await handleApi(store, req.method, url, body);
     return json(res, out.code, out.obj);
   });
-                                                                                                 }
+    }
