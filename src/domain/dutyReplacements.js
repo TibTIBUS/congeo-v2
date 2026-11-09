@@ -1,4 +1,4 @@
-import {schoolOn} from './school.js';
+import {schoolOn,beforeEmployment} from './school.js';
 import {isClosedHoliday} from './publicHolidays.js';
 import {getDayPlan} from './planning.js';
 import {parseISO,toISODate,isoWeek,parityOf} from './dates.js';
@@ -11,7 +11,7 @@ import {effectiveDutyAssignments} from './dutyReplacementState.js';
 export function replacementProposal(data,request){
  const backups=dutyBackups(data),absences=approvedAbsences(data),rows=[];
  for(const day of requestDayList(request)){
-  if(isClosedHoliday(data,day)||schoolOn(data,request.employeeId,day))continue;
+  if(beforeEmployment(data,request.employeeId,day)||isClosedHoliday(data,day)||schoolOn(data,request.employeeId,day))continue;
   const date=parseISO(day),wd=(date.getDay()+6)%7;
   const plan=getDayPlan(data.templates,data.overrides,request.employeeId,date);
   if(!plan.worked)continue;
@@ -19,7 +19,7 @@ export function replacementProposal(data,request){
   for(const role of ['open','close'])if(plan[role]||effectiveDutyAssignments(data,request.employeeId,day).some(x=>x.role===role)){
    const candidates=(data.employees||[]).filter(e=>e.id!==request.employeeId&&backups[e.id]?.[parity]?.[wd]?.[role]).map(e=>{
     const p=getDayPlan(data.templates,data.overrides,e.id,date),assigned=effectiveDutyAssignments(data,e.id,day).some(x=>x.role===role);
-    const reason=schoolOn(data,e.id,day)?'École ce jour':e.active===false?'Salarié inactif':absences.some(r=>r.employeeId===e.id&&absenceOn(r,day))?'Absent ce jour':!p.worked?'Repos ce jour':p[role]||assigned?'Déjà affecté à ce rôle':'';
+    const reason=beforeEmployment(data,e.id,day)?"Avant l'arrivée":schoolOn(data,e.id,day)?'École ce jour':e.active===false?'Salarié inactif':absences.some(r=>r.employeeId===e.id&&absenceOn(r,day))?'Absent ce jour':!p.worked?'Repos ce jour':p[role]||assigned?'Déjà affecté à ce rôle':'';
     return {employeeId:e.id,name:e.name,available:!reason,reason};
    });rows.push({day,role,candidates});
   }
