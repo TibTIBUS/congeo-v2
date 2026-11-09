@@ -1,3 +1,5 @@
+import {handleApi} from '../server/index.js';
+import {holidayPreview,closedHolidayDates} from '../src/domain/publicHolidays.js';
 // Vrai Postgres ÉPHÉMÈRE et LOCAL (binaire embedded-postgres, aucun service
 // externe, aucune donnée réelle) : vérifie le schéma, le store SQL et surtout
 // le VERROUILLAGE CONCURRENT RÉEL de la validation (deux connexions en parallèle).
@@ -79,6 +81,15 @@ afterAll(async () => {
     expect(storedDutyAssignments(await store.getDoc())).toHaveLength(1);
     await store.transact(db=>{changePlanning(db,{employee:employee.id,action:'cancel',id:r.id});changePlanning(db,{admin:true,action:'confirmCancel',id:r.id});});
     expect(storedDutyAssignments(await store2.getDoc())).toEqual([]);
+  });
+
+  it('holiday activation preserves validated records, recurring hours and ledger in real Postgres',async()=>{
+    const before=await store.getDoc(),p={admin:true,year:2027,open:[],effectiveFrom:'2027-01-01'},preview=holidayPreview(before,p);
+    const result=await handleApi(store,'PUT',new URL('/api/holidays','http://test'),{...p,confirm:true,version:preview.version});
+    expect(result.code).toBe(200);const after=await store.getDoc();
+    for(const key of ['employees','templates','overrides','requests','recoveryLedger','outbox'])expect(after[key]).toEqual(before[key]);
+    expect(closedHolidayDates(after)).toHaveLength(11);
+    const replay=await handleApi(store,'PUT',new URL('/api/holidays','http://test'),{...p,confirm:true,version:preview.version});expect(replay.code).toBe(409);expect(await store.getDoc()).toEqual(after);
   });
 
 });
