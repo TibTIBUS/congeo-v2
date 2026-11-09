@@ -7,13 +7,14 @@ function absenceCaption(request){
  return recovery?'Récupération':'Congé';
 }
 
-export default function CalendarDayContent({personal,events,actor,employeeName}){
+export default function CalendarDayContent({personal,events,actor,employeeName,schoolPeople=[]}){
  // An approved personal absence already appears in the personal section.
  const teamEvents=events.filter(request=>!(personal&&['leave','recovery','sick'].includes(personal.kind)&&request.employee_id===actor&&request.status==='approved'));
  return <>
   {personal?.replacementOpen&&<span className="replacement-label">Remplacement ouverture</span>}{personal?.replacementClose&&<span className="replacement-label">Remplacement fermeture</span>}{personal&&<span className={'calendar-personal calendar-personal-'+personal.kind}>
-   {personal.kind==='work'?<span className="calendar-shift-ranges">{personal.ranges.map(range=><span key={range}>{range}</span>)}</span>:<span className="calendar-personal-status">{personal.kind==='holiday'?'Férié · fermé':personal.kind==='sick'?'Mon arrêt de travail':personal.kind==='rest'?'Repos':personal.kind==='recovery'?'Ma récupération':'Mon congé'}</span>}
+   {personal.kind==='work'?<span className="calendar-shift-ranges">{personal.ranges.map(range=><span key={range}>{range}</span>)}</span>:<span className="calendar-personal-status">{personal.kind==='school'?'École':personal.kind==='holiday'?'Férié · fermé':personal.kind==='sick'?'Mon arrêt de travail':personal.kind==='rest'?'Repos':personal.kind==='recovery'?'Ma récupération':'Mon congé'}</span>}
   </span>}
+  {schoolPeople.filter(e=>e.id!==actor||personal?.kind!=='school').map(e=><span key={'school-'+e.id} className="school-chip calendar-school">École : {e.name}</span>)}
   {teamEvents.length>0&&<span className="calendar-team-absences">
    {teamEvents.slice(0,2).map(request=><span className={'event calendar-absence '+request.status+(request.leave_type==='sick'?' sick-absence':'')} key={request.id}>
     <span className="calendar-absence-caption">{absenceCaption(request)} :</span>
