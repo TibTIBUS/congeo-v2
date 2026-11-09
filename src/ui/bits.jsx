@@ -5,7 +5,7 @@ import { fmtHours } from "../domain/planning.js";
 export function Badges({ d }) {
   if (!d.worked) return null;
   return <span style={{ display: "inline-flex", gap: 4, marginLeft: 6 }}>
-    {d.open && <span className="badgeO" title="Ouvre le magasin">O</span>}
+    {d.replacementOpen&&<span className="replacement-label">Rempl. ouverture</span>}{d.replacementClose&&<span className="replacement-label">Rempl. fermeture</span>}{d.open && <span className="badgeO" title="Ouvre le magasin">O</span>}
     {d.close && <span className="badgeF" title="Ferme le magasin">F</span>}
   </span>;
 }
