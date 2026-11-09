@@ -1,3 +1,4 @@
+import {holidayCalendar,closedHolidayDates,holidayRequestDays,isClosedHoliday,holidayPreview,saveHolidayCalendar} from '../src/domain/publicHolidays.js';
 import {dutyBackups,storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 // Serveur local de la V2 (test uniquement, aucun deploiement).
 // - Sert l'app buildee (dist/) ET l'API sur le meme port.
@@ -51,6 +52,7 @@ function cleanTemplate(t) {
 function bootstrapFor(db, empId) {
   return {
     employeeId: empId,
+    closedHolidays:closedHolidayDates(db),
     openSundays:getOpenSundays(db),
     employees: db.employees.filter((e) => e.id === empId),
     templates: { [empId]: db.templates[empId] },
@@ -96,6 +98,13 @@ export async function handleApi(store, method, url, body) {
     }
   }
 
+  if(p==='/api/holidays'){
+    try{
+      if(method==='GET'){const db=await store.getDoc();return {code:200,obj:{calendar:holidayCalendar(db),closedHolidays:closedHolidayDates(db)}};}
+      if(method==='POST'){if(body.admin!==true)throw Error('Cette action est réservée à la gérante.');return {code:200,obj:holidayPreview(await store.getDoc(),body)};}
+      if(method==='PUT'){let result;await store.transact(db=>{result=saveHolidayCalendar(db,body);});return {code:200,obj:{ok:true,preview:result}};}
+    }catch(e){return {code:409,obj:{error:e.message||'Impossible de configurer les jours fériés.'}};}
+  }
   if(p==='/api/sundays'&&method==='PUT'){
     try{await store.transact(db=>{db.settings??={};applySundayOpening(db,body,cleanDay);});return {code:200,obj:{ok:true}};}
     catch(e){return {code:400,obj:{error:e.message||'Impossible d’enregistrer ce dimanche.'}};}
@@ -167,7 +176,7 @@ export async function handleApi(store, method, url, body) {
     if (method === "PUT") {
       const d2 = cleanDay(body);
       if (!d2) return { code: 400, obj: { error: "Journée invalide" } };
-      try{await store.transact(current=>{if(d2.worked&&parseISO(day).getDay()===0&&!getOpenSundays(current).includes(day))throw Error("Ce dimanche est fermé. Activez d’abord son ouverture exceptionnelle.");current.overrides[empId+'|'+day]=d2;});}catch(e){return {code:400,obj:{error:e.message}};}
+      try{await store.transact(current=>{if(d2.worked&&isClosedHoliday(current,day))throw Error('Ce jour férié est fermé. Modifiez d’abord le calendrier des jours fériés.');if(d2.worked&&parseISO(day).getDay()===0&&!getOpenSundays(current).includes(day))throw Error("Ce dimanche est fermé. Activez d’abord son ouverture exceptionnelle.");current.overrides[empId+'|'+day]=d2;});}catch(e){return {code:400,obj:{error:e.message}};}
       return { code: 200, obj: { day: d2 } };
     }
     if (method === "DELETE") {
@@ -237,7 +246,7 @@ export async function handleApi(store, method, url, body) {
     db.employees.forEach((e) => { leavesByEmployee[e.id] = []; });
     db.requests.filter((r) => r.type === "leave" && r.status === "approved").forEach((r) => {
       const weeks = new Set();
-      requestDates(r).forEach((iso) => { const w = isoWeek(parseISO(iso)); if (w.year === year) weeks.add(w.week); });
+      holidayRequestDays(db,r,requestDates(r)).forEach((iso) => { const w = isoWeek(parseISO(iso)); if (w.year === year) weeks.add(w.week); });
       leavesByEmployee[r.employeeId] = [...new Set([...(leavesByEmployee[r.employeeId]||[]),...weeks])].sort((a,b)=>a-b);
     });
     return { code: 200, obj: { year, weeks: isoWeeksInYear(year), leavesByEmployee } };
@@ -269,4 +278,4 @@ export function createApp(storeOrPath, distDir) {
     const out = await handleApi(store, req.method, url, body);
     return json(res, out.code, out.obj);
   });
-          }
+                                                                                                 }
