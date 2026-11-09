@@ -119,3 +119,12 @@ h1{letter-spacing:-.5px}
 
 .alternative summary{font-weight:700;cursor:pointer;padding:10px 0}.alternative[open] summary{margin-bottom:12px}
 .requests-list .archive-controls label{display:flex;flex-direction:row;align-items:center;text-align:left;gap:10px}.archive-controls input{flex-shrink:0;margin:0}.duty-scroll-help{font-size:12px;color:#647772;margin:8px 0}
+
+/* Only checked roles carry the Excel role color. A selected primary stays dark. */
+.duty-checkbox-pair label.duty-checkbox{background:#fff;color:#647772;border:1px solid #d5e2de}
+.duty-checkbox-pair label.duty-primary-open:has(input:checked){background:#333399;color:#fff;border-color:#333399}
+.duty-checkbox-pair label.duty-primary-close:has(input:checked){background:#236a48;color:#fff;border-color:#236a48}
+.duty-checkbox-pair label.duty-backup-control:has(input:checked){background:#d9ebfc;color:#244366;border-color:#a7c9eb}
+.duty-checkbox-pair label.duty-backup-control:last-child:has(input:checked){background:#def1df;color:#244e34;border-color:#a9d2ac}
+.duty-checkbox-pair label.duty-primary-open input{accent-color:#333399}.duty-checkbox-pair label.duty-primary-close input{accent-color:#236a48}
+.duty-checkbox-pair label.duty-checkbox>span{font-size:9px;line-height:1.3}
