@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS requests (
   date_start    date,          -- leave : début de plage incluse
   date_end      date,          -- leave : fin de plage incluse
   dates         date[],        -- recovery : jours posés
-  status        text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  status        text NOT NULL DEFAULT 'pending' CONSTRAINT requests_status_check CHECK (status IN ('pending','approved','rejected')),
   deducted_min  integer,       -- recovery : heures décomptées à la validation
   created_at    timestamptz NOT NULL DEFAULT now(),
   decided_at    timestamptz,
