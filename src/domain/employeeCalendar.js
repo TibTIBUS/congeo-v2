@@ -1,3 +1,4 @@
+import {isClosedHoliday} from './publicHolidays.js';
 import {effectiveDutyAssignments} from './dutyReplacements.js';
 import {getDayPlan} from './planning.js';
 import {parseISO} from './dates.js';
@@ -16,6 +17,7 @@ const clock=value=>value.replace(/^0/,'').replace(':','h').replace(/h00$/,'h');
 export function employeeCalendarDay(schedule,employeeId,day,requests=[]){
  // A pending response for another selected name must never supply its hours.
  if(!employeeId||!schedule||schedule.employeeId!==employeeId)return null;
+ if(isClosedHoliday(schedule,day))return {kind:'holiday',label:'Férié · magasin fermé'};
  const absence=requests.find(r=>r.employee_id===employeeId&&r.status==='approved'&&requestCoversDay(r,day,getOpenSundays(schedule)));
  if(absence)return {kind:absence.leave_type==='sick'?'sick':absence.leave_type==='recovery'?'recovery':'leave',label:absence.leave_type==='sick'?'Arrêt de travail':absence.leave_type==='recovery'?'Récupération':'Congé validé'};
  const date=parseISO(day),plan=getDayPlan(schedule.templates||{},schedule.overrides||{},employeeId,date);
