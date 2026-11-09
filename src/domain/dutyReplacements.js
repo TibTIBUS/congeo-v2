@@ -1,3 +1,4 @@
+import {isClosedHoliday} from './publicHolidays.js';
 import {getDayPlan} from './planning.js';
 import {parseISO,toISODate,isoWeek,parityOf} from './dates.js';
 import {approvedAbsences} from './sickLeave.js';
@@ -9,6 +10,7 @@ import {effectiveDutyAssignments} from './dutyReplacementState.js';
 export function replacementProposal(data,request){
  const backups=dutyBackups(data),absences=approvedAbsences(data),rows=[];
  for(const day of requestDayList(request)){
+  if(isClosedHoliday(data,day))continue;
   const date=parseISO(day),wd=(date.getDay()+6)%7;
   const plan=getDayPlan(data.templates,data.overrides,request.employeeId,date);
   if(!plan.worked)continue;
