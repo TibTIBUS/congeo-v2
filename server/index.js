@@ -1,4 +1,4 @@
-import {schoolPeriods,saveSchoolPeriod} from '../src/domain/school.js';
+import {schoolPeriods,saveSchoolPeriod,employmentStarts} from '../src/domain/school.js';
 import {holidayCalendar,closedHolidayDates,holidayRequestDays,isClosedHoliday,holidayPreview,saveHolidayCalendar} from '../src/domain/publicHolidays.js';
 import {dutyBackups,storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 // Serveur local de la V2 (test uniquement, aucun deploiement).
@@ -53,6 +53,7 @@ function cleanTemplate(t) {
 function bootstrapFor(db, empId) {
   return {
     employeeId: empId,
+    employmentStarts:{[empId]:employmentStarts(db)[empId]},
     schoolPeriods:schoolPeriods(db).filter(p=>p.employeeId===empId),
     closedHolidays:closedHolidayDates(db),
     openSundays:getOpenSundays(db),
@@ -221,10 +222,12 @@ export async function handleApi(store, method, url, body) {
       const days = leaveDates({ dateStart: body.dateStart, dateEnd: body.dateEnd });
       const bad = days.find((d) => leaveBlockedReason(d, db.blocks, firstWeek));
       if (bad) return { code: 400, obj: { error: `${bad} : ${leaveBlockedReason(bad, db.blocks, firstWeek)}. Choisissez une autre période.` } };
-      r = { employeeId: empId, type: "leave", dateStart: body.dateStart, dateEnd: body.dateEnd };
+      r = { employeeId: empId,
+    employmentStarts:{[empId]:employmentStarts(db)[empId]}, type: "leave", dateStart: body.dateStart, dateEnd: body.dateEnd };
     } else if (body.type === "recovery") {
       if (!Array.isArray(body.dates) || body.dates.length === 0 || !body.dates.every((d) => ISODATE.test(d))) return { code: 400, obj: { error: "dates requises" } };
-      r = { employeeId: empId, type: "recovery", dates: body.dates.slice(0, 30) };
+      r = { employeeId: empId,
+    employmentStarts:{[empId]:employmentStarts(db)[empId]}, type: "recovery", dates: body.dates.slice(0, 30) };
     } else return { code: 400, obj: { error: "type leave|recovery requis" } };
     r.id = "r" + Date.now(); r.status = "pending"; r.createdAt = new Date().toISOString();
     await store.createRequest(r);
@@ -287,4 +290,4 @@ export function createApp(storeOrPath, distDir) {
     const out = await handleApi(store, req.method, url, body);
     return json(res, out.code, out.obj);
   });
-    }
+      }
