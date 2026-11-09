@@ -20,3 +20,6 @@ export function saveSchoolPeriod(db,payload){
  }
  db.settings??={};db.settings.schoolPeriods=JSON.stringify(next);return next;
 }
+
+export function employmentStarts(data){try{return data.employmentStarts||JSON.parse(data.settings?.employmentStarts||'{}');}catch{return {};}}
+export const beforeEmployment=(data,id,day)=>!!employmentStarts(data)[id]&&day<employmentStarts(data)[id];
