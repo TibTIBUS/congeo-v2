@@ -1,3 +1,4 @@
+import {effectiveDutyAssignments} from './dutyReplacementState.js';
 // Planning : gabarits semaines paire/impaire par salarie, plan hebdo genere
 // selon la parite ISO, ajustable jour par jour (overrides).
 // day = { worked, start:"HH:MM", end:"HH:MM", pauseStart:"HH:MM"|null, pauseEnd:"HH:MM"|null, open:bool, close:bool }
@@ -70,6 +71,7 @@ export function effectiveWeekPlan(data,employeeId,year,week){
  const absences=approvedAbsences(data).filter(r=>r.employeeId===employeeId);
  return getWeekPlan(data.templates,data.overrides,employeeId,year,week).map(d=>{
   const day=toISODate(d.date),absent=absences.some(r=>r.type==='recovery'?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day);
-  return absent?{...d,worked:false,open:false,close:false}:d;
+  const replacement=effectiveDutyAssignments(data,employeeId,day);
+  return absent?{...d,worked:false,open:false,close:false}: {...d,open:d.open||replacement.some(x=>x.role==='open'),close:d.close||replacement.some(x=>x.role==='close'),replacementOpen:replacement.some(x=>x.role==='open'),replacementClose:replacement.some(x=>x.role==='close')};
  });
 }

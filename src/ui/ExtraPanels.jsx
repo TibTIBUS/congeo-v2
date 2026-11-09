@@ -9,7 +9,7 @@ import SundayOpenings from './SundayOpenings';
 import {getOpenSundays} from '../domain/sundays';
 import {apiFetch} from '../lib/api';
 import {Planning,Gabarits,Export} from './AdminView';
-import {getWeekPlan} from '../domain/planning';
+import {effectiveWeekPlan,getWeekPlan} from '../domain/planning';
 import {isoWeek,addDays,mondayOfISOWeek,weekDates,fmtRange,toISODate,parityOf} from '../domain/dates';
 import {fmtRanges} from './bits';
 import {requestDates} from '../domain/requests';
@@ -32,7 +32,7 @@ export default function ExtraPanels({tab,admin,actor,onChanged}){
 }
 function MySchedule({data,actor}){
  const [wk,setWk]=useState(()=>isoWeek(new Date()));const emp=data.employees.find(e=>e.id===actor);if(!emp)return <div className="notice">Ce salarié n’est plus actif.</div>;
- const plan=getWeekPlan(data.templates,data.overrides,actor,wk.year,wk.week);
+ const plan=effectiveWeekPlan(data,actor,wk.year,wk.week);
  const move=n=>setWk(isoWeek(addDays(mondayOfISOWeek(wk.year,wk.week),7*n)));
  const absence=day=>approvedAbsences(data).find(r=>r.employeeId===actor&&r.status==='approved'&&requestDates(r).includes(day));
  const bal=data.recoveryLedger.filter(l=>l.employeeId===actor).reduce((s,l)=>s+l.deltaMin,0),today=toISODate(new Date());
@@ -41,7 +41,7 @@ function MySchedule({data,actor}){
   const day=toISODate(p.date),a=absence(day),working=(i!==6||getOpenSundays(data).includes(day))&&!a&&p.worked,ranges=working?fmtRanges(p).split(' / '):[];
   return <li key={day} className={'schedule-timeline-row '+(!working?'is-off ':'')+(a?'is-absence ':'')+(day===today?'is-today':'')} aria-current={day===today?'date':undefined}>
    <time className={'schedule-timeline-date '+(i===6?'is-sunday':'')} dateTime={day}><span>{p.date.toLocaleDateString('fr-FR',{weekday:'long'})}</span><strong>{p.date.getDate()}</strong><small>{p.date.toLocaleDateString('fr-FR',{month:'short'})}</small></time><span className="schedule-timeline-node" aria-hidden="true"/>
-   <div className="schedule-timeline-entry">{working?<><div className="schedule-timeline-ranges">{ranges.map((range,index)=><React.Fragment key={range}>{index>0&&<span className="schedule-pause"><Utensils size={14} aria-hidden="true"/>Pause</span>}<span>{range}</span></React.Fragment>)}</div>{(p.open||p.close)&&<div className="schedule-duties">{p.open&&<span>Ouverture</span>}{p.close&&<span>Fermeture</span>}</div>}</>:<span className={'schedule-day-status'+(a?.type==='sick'?' sick-absence':'')}>{a?.type==='sick'?<CalendarOff size={18} aria-hidden="true"/>:<Coffee size={18} aria-hidden="true"/>}{a?(a.type==='sick'?'Arrêt de travail':a.type==='recovery'?'Récupération':'Congé'):'Repos'}</span>}</div>
+   <div className="schedule-timeline-entry">{working?<><div className="schedule-timeline-ranges">{ranges.map((range,index)=><React.Fragment key={range}>{index>0&&<span className="schedule-pause"><Utensils size={14} aria-hidden="true"/>Pause</span>}<span>{range}</span></React.Fragment>)}</div>{(p.open||p.close)&&<div className="schedule-duties">{p.open&&<span className={p.replacementOpen?'replacement-label':''}>{p.replacementOpen?'Remplacement ouverture':'Ouverture'}</span>}{p.close&&<span className={p.replacementClose?'replacement-label':''}>{p.replacementClose?'Remplacement fermeture':'Fermeture'}</span>}</div>}</>:<span className={'schedule-day-status'+(a?.type==='sick'?' sick-absence':'')}>{a?.type==='sick'?<CalendarOff size={18} aria-hidden="true"/>:<Coffee size={18} aria-hidden="true"/>}{a?(a.type==='sick'?'Arrêt de travail':a.type==='recovery'?'Récupération':'Congé'):'Repos'}</span>}</div>
   </li>;
  })}</ol>
  <div className="schedule-recovery-summary"><Timer size={21} aria-hidden="true"/><h2>Solde de récupération</h2><strong>{format(bal)}</strong><span>disponibles</span></div></div>;

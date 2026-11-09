@@ -1,3 +1,4 @@
+import {storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 // Serveur local de la V2 (test uniquement, aucun deploiement).
 // - Sert l'app buildee (dist/) ET l'API sur le meme port.
 // - ACCES COMME LA V1 (decision utilisateur 25/10/2026 12h57) : pas de connexion.
@@ -53,6 +54,7 @@ function bootstrapFor(db, empId) {
     openSundays:getOpenSundays(db),
     employees: db.employees.filter((e) => e.id === empId),
     templates: { [empId]: db.templates[empId] },
+    dutyAssignments:storedDutyAssignments(db).filter(x=>x.employeeId===empId).map(({day,role,employeeId})=>({day,role,employeeId})),
     overrides: Object.fromEntries(Object.entries(db.overrides).filter(([k]) => k.startsWith(empId + "|"))),
     requests: db.requests.filter((r) => r.employeeId === empId),
     sickLeaves: activeSickLeaves(db).filter(r=>r.employeeId===empId),

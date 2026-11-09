@@ -17,7 +17,7 @@ import { checkRecoveryValidation } from "../src/domain/requests.js";
 import {requestDates} from '../src/domain/requests.js';
 import {hasSickConflict} from '../src/domain/sickLeave.js';
 
-const iso = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+const iso = (v) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}` : String(v).slice(0, 10));
 const hm = (v) => (v == null ? null : String(v).slice(0, 5));
 const dayRow = (r) => ({ worked: r.worked, start: hm(r.start_time), end: hm(r.end_time), pauseStart: hm(r.pause_start), pauseEnd: hm(r.pause_end), open: r.is_open, close: r.is_close });
 const reqFromRow = (r) => ({

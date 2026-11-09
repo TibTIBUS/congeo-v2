@@ -7,6 +7,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
+import {changePlanning} from '../server/restored.js';
+import {replacementProposal,storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 import { createPgStore } from "../server/db-pg.js";
 
 let epg, store, client2, schema;
@@ -67,4 +69,16 @@ afterAll(async () => {
     const doc = await store.getDoc();
     expect(doc.requests.find((r) => r.employeeId === "hugo" && r.type === "recovery").status).toBe("approved");
   }, 30000);
+  it('replacement choices persist atomically; concurrent stale choices roll back; cancellation removes assignments',async()=>{
+    const d=await store.getDoc(),employee=d.employees[0],backup=d.employees[1],day='2027-02-16';
+    await store.transact(db=>{db.blocks=[];db.settings.blocksConfigured='true';db.settings.firstWeek='false';db.templates[employee.id].impaire[1].open=true;db.templates[backup.id].impaire[1]={worked:true,start:'09:00',end:'19:00',pauseStart:null,pauseEnd:null,open:false,close:false};db.settings.dutyBackups=JSON.stringify({[backup.id]:{impaire:{1:{open:true,close:false}}}});changePlanning(db,{admin:true,action:'request',target:employee.id,start:day,end:day,leaveType:'leave'});});
+    const current=await store.getDoc(),r=current.requests.find(x=>x.employeeId===employee.id&&x.dateStart===day),proposal=replacementProposal(current,r),review={version:proposal.version,choices:[{day,role:'open',employeeId:backup.id}]};
+    expect(proposal.rows).toHaveLength(1);
+    const store2=await createPgStore(client2,{seedIfEmpty:false,schemaName:schema});
+    await Promise.all([store.transact(db=>changePlanning(db,{admin:true,action:'approve',id:r.id,replacementReview:review})),store2.transact(db=>changePlanning(db,{admin:true,action:'approve',id:r.id,replacementReview:review}))]);
+    expect(storedDutyAssignments(await store.getDoc())).toHaveLength(1);
+    await store.transact(db=>{changePlanning(db,{employee:employee.id,action:'cancel',id:r.id});changePlanning(db,{admin:true,action:'confirmCancel',id:r.id});});
+    expect(storedDutyAssignments(await store2.getDoc())).toEqual([]);
+  });
+
 });
