@@ -1,3 +1,4 @@
+import {replacementProposal,validateReplacementChoices} from '../src/domain/dutyReplacements.js';
 // V1 leave workflows on the V2 data model. All mutations run under the store lock.
 import { randomUUID } from 'node:crypto';
 import {workdays,blockedReason,today,validDate,defaultBlocks} from '../src/domain/calendarRules.js';
@@ -49,11 +50,11 @@ export function changePlanning(db,p){
  }
  const r=db.requests.find(r=>String(r.id)===String(p.id));if(!r)throw Error('Demande introuvable ou déjà supprimée.');r.details??={};
  if(!admin&&r.employeeId!==actor)throw Error('Cette demande appartient à un autre salarié.');
- if(['deleteRequest','deleteApproved','editApproved'].includes(a)){requireAdmin();stale(r,p);if(a==='editApproved'&&r.status!=='approved')throw Error('Ce congé n’est plus validé.');if(a==='editApproved'){checkDates(db,p.start,p.end,true);refund(db,r);absence(r,p.start,p.end,p.leaveType,getOpenSundays(db));r.details={...r.details,override:p.override?1:0,answer:String(p.answer||'').slice(0,1500),cancel_requested:0};checkCapacity(db,r);deduct(db,r);}else{refund(db,r);db.requests=db.requests.filter(q=>q.id!==r.id);}queued(db,r,a==='editApproved'?'Aline a modifié votre absence validée. Consultez Congéo pour voir les nouvelles dates.':'Aline a supprimé votre demande d’absence. Les récupérations déjà décomptées sont recréditées.');return;}
- if(a==='approve'){requireAdmin();if(r.status==='approved')return;if(r.status!=='pending')throw Error('Cette demande a déjà été traitée.');const x=toV1(r,getOpenSundays(db));checkDates(db,x.start,x.end);r.details.override=p.override?1:0;checkCapacity(db,r);deduct(db,r);r.status='approved';r.details.answer=String(p.answer||'').slice(0,1500);}
+ if(['deleteRequest','deleteApproved','editApproved'].includes(a)){requireAdmin();stale(r,p);if(a==='editApproved'&&r.status!=='approved')throw Error('Ce congé n’est plus validé.');if(a==='editApproved'){checkDates(db,p.start,p.end,true);refund(db,r);delete r.details.dutyReplacements;absence(r,p.start,p.end,p.leaveType,getOpenSundays(db));r.details={...r.details,override:p.override?1:0,answer:String(p.answer||'').slice(0,1500),cancel_requested:0};checkCapacity(db,r);r.details.dutyReplacements=validateReplacementChoices(db,r,p.replacementReview);deduct(db,r);}else{refund(db,r);db.requests=db.requests.filter(q=>q.id!==r.id);}queued(db,r,a==='editApproved'?'Aline a modifié votre absence validée. Consultez Congéo pour voir les nouvelles dates.':'Aline a supprimé votre demande d’absence. Les récupérations déjà décomptées sont recréditées.');return;}
+ if(a==='approve'){requireAdmin();if(r.status==='approved')return;if(r.status!=='pending')throw Error('Cette demande a déjà été traitée.');const x=toV1(r,getOpenSundays(db));checkDates(db,x.start,x.end);r.details.override=p.override?1:0;checkCapacity(db,r);const replacements=validateReplacementChoices(db,r,p.replacementReview);deduct(db,r);r.details.dutyReplacements=replacements;r.status='approved';r.details.answer=String(p.answer||'').slice(0,1500);}
  else if(a==='refuse'){requireAdmin();if(!['pending','proposed'].includes(r.status))throw Error('Cette demande a déjà été traitée.');r.status='rejected';r.details.answer=String(p.answer||'').slice(0,1500);}
- else if(a==='propose'){requireAdmin();if(!['pending','proposed'].includes(r.status))throw Error('Cette demande a déjà été traitée.');checkDates(db,p.start,p.end);const q=structuredClone(r);absence(q,p.start,p.end,undefined,getOpenSundays(db));q.details.override=0;checkCapacity(db,q);r.status='proposed';r.details.proposed_start=p.start;r.details.proposed_end=p.end;r.details.answer=String(p.answer||'').slice(0,1500);}
- else if(a==='acceptProposal'){if(admin||r.status!=='proposed')throw Error('Le salarié doit accepter une proposition en cours.');checkDates(db,r.details.proposed_start,r.details.proposed_end);absence(r,r.details.proposed_start,r.details.proposed_end,undefined,getOpenSundays(db));r.details.override=0;checkCapacity(db,r);deduct(db,r);r.status='approved';r.details.proposed_start=null;r.details.proposed_end=null;}
+ else if(a==='propose'){requireAdmin();if(!['pending','proposed'].includes(r.status))throw Error('Cette demande a déjà été traitée.');checkDates(db,p.start,p.end);const q=structuredClone(r);absence(q,p.start,p.end,undefined,getOpenSundays(db));q.details.override=0;checkCapacity(db,q);r.status='proposed';r.details.proposed_start=p.start;r.details.proposed_end=p.end;r.details.answer=String(p.answer||'').slice(0,1500);r.details.proposedReplacementReview={version:replacementProposal(db,q).version,choices:validateReplacementChoices(db,q,p.replacementReview)};}
+ else if(a==='acceptProposal'){if(admin||r.status!=='proposed')throw Error('Le salarié doit accepter une proposition en cours.');checkDates(db,r.details.proposed_start,r.details.proposed_end);absence(r,r.details.proposed_start,r.details.proposed_end,undefined,getOpenSundays(db));r.details.override=0;checkCapacity(db,r);r.details.dutyReplacements=validateReplacementChoices(db,r,r.details.proposedReplacementReview);deduct(db,r);r.status='approved';delete r.details.proposedReplacementReview;r.details.proposed_start=null;r.details.proposed_end=null;}
  else if(a==='declineProposal'){if(r.status!=='proposed')throw Error('Cette proposition n’est plus disponible.');r.status='pending';r.details.proposed_start=null;r.details.proposed_end=null;}
  else if(a==='cancel'){if(r.status==='approved')r.details.cancel_requested=1;else if(['pending','proposed'].includes(r.status))r.status='cancelled';else throw Error('Cette demande ne peut plus être annulée.');}
  else if(a==='confirmCancel'){requireAdmin();if(!r.details.cancel_requested)throw Error('Aucune annulation demandée.');refund(db,r);r.status='cancelled';r.details.cancel_requested=0;}
@@ -61,13 +62,14 @@ export function changePlanning(db,p){
  queued(db,r,`Aline a mis à jour votre demande d’absence. Consultez Congéo pour voir la décision ou les nouvelles dates.`);
 }
 export async function restoredApi(store,method,url,body){
+ if(url.pathname==='/api/duty-replacements'&&method==='GET'){if(url.searchParams.get('admin')!=='1')return {code:403,obj:{error:'Réservé à la gérante.'}};const db=structuredClone(await store.getDoc()),r=db.requests.find(r=>String(r.id)===url.searchParams.get('request'));if(!r)return {code:404,obj:{error:'Demande introuvable.'}};const start=url.searchParams.get('start'),end=url.searchParams.get('end');if(start&&end){checkDates(db,start,end,true);absence(r,start,end,url.searchParams.get('leaveType')||r.type,getOpenSundays(db));delete r.details?.dutyReplacements;}return {code:200,obj:replacementProposal(db,r)};}
  let legacy=null;
  if(url.pathname==='/api/requests'&&method==='POST'){
   const ds=body.type==='recovery'?[...new Set(body.dates||[])].sort():null;
   legacy={action:'request',employee:body.employeeId,leaveType:body.type,start:body.dateStart||ds?.[0],end:body.dateEnd||ds?.at(-1)};
  }
  const route=url.pathname.match(/^\/api\/requests\/([\w-]+)\/(validate|reject)$/);
- if(route&&method==='POST')legacy={admin:true,action:route[2]==='validate'?'approve':'refuse',id:route[1],override:body.override===true};
+ if(route&&method==='POST')legacy={admin:true,action:route[2]==='validate'?'approve':'refuse',id:route[1],override:body.override===true,replacementReview:body.replacementReview};
  if(url.pathname!=='/api/planning'&&!legacy)return null;
  try{
   if(legacy){let result;let idempotent=false;await store.transact(db=>{idempotent=legacy.action==='approve'&&db.requests.some(r=>String(r.id)===String(legacy.id)&&r.status==='approved');changePlanning(db,legacy);result=db.requests.find(r=>String(r.id)===String(legacy.id))||db.requests.at(-1);});return {code:legacy.action==='request'?201:200,obj:{request:result,idempotent}};}
@@ -89,4 +91,4 @@ export async function restoredApi(store,method,url,body){
   }
   return {code:405,obj:{error:'Méthode non autorisée.'}};
  }catch(e){return {code:legacy&&legacy.action!=='request'?409:400,obj:{error:e.message||'Impossible d’enregistrer.'}};}
-}
+ }
