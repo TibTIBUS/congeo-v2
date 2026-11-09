@@ -9,5 +9,17 @@ export async function apiFetch(path:string,options:RequestInit={}){
  let response:Response;
  try{response=await fetch(origin.origin+path,{...options,credentials:'omit'});}catch{throw new Error('Le planning partagé est momentanément inaccessible. Réessayez dans un instant.');}
  if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('Le planning partagé ne répond pas correctement. Contactez la gérante.');
+ // View-only name correction. Keep the stored record, IDs and outgoing payloads unchanged.
+ const json=response.json.bind(response);
+ response.json=async()=>{
+  const display=(value:any):any=>{
+   if(Array.isArray(value))return value.map(display);
+   if(!value||typeof value!=='object')return value;
+   const result=Object.fromEntries(Object.entries(value).map(([key,item])=>[key,display(item)]));
+   if((value.id==='a8eed33e-0759-4cf5-86ca-e6d5157a0d83'||value.employeeId==='a8eed33e-0759-4cf5-86ca-e6d5157a0d83')&&value.name==='Pascaline')result.name='Pascaline Osouf';
+   return result;
+  };
+  return display(await json());
+ };
  return response;
 }
