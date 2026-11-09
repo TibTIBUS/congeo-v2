@@ -20,7 +20,7 @@ export default function ExtraPanels({tab,admin,actor,onChanged}){
  const refresh=useCallback(async()=>{try{setData(await api('/api/bootstrap?'+(admin?'as=admin':'employee='+encodeURIComponent(actor))));setErr('');return true;}catch(e){setErr(e.message);return false;}},[admin,actor]);
  useEffect(()=>{if(admin||actor)void refresh();const focus=()=>void refresh();addEventListener('focus',focus);const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},60000);return()=>{removeEventListener('focus',focus);clearInterval(timer);};},[refresh,admin,actor]);
  const write=async(path,method,body)=>{try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});await refresh();onChanged?.();}catch(e){setErr(e.message);throw e;}};
- const actions={saveTemplate:(emp,tpl,original)=>write('/api/templates/'+emp,'PUT',{...tpl,...(original?{original}:{})}),saveOverride:(emp,iso,day)=>write(`/api/overrides/${emp}/${iso}`,'PUT',day),resetOverride:(emp,iso)=>write(`/api/overrides/${emp}/${iso}`,'DELETE')};
+ const actions={saveTemplate:(emp,tpl,original,roles)=>write('/api/templates/'+emp,'PUT',{...tpl,...(original?{original}:{}),...(roles||{})}),saveOverride:(emp,iso,day)=>write(`/api/overrides/${emp}/${iso}`,'PUT',day),resetOverride:(emp,iso)=>write(`/api/overrides/${emp}/${iso}`,'DELETE')};
  if(tab==='sick')return admin?<SickLeavePage onChanged={onChanged}/>:<div className="notice">Cette page est réservée à la gérante.</div>;
  if(tab==='overtime')return admin?<MonthlyOvertime/>:<div className="notice">Cette page est réservée à la gérante.</div>;
  if(!admin&&!actor)return <div className="notice">Sélectionnez votre nom en haut de l’écran pour voir vos horaires.</div>;
