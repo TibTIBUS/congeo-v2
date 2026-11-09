@@ -1,4 +1,4 @@
-import {storedDutyAssignments} from '../src/domain/dutyReplacements.js';
+import {dutyBackups,storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 // Serveur local de la V2 (test uniquement, aucun deploiement).
 // - Sert l'app buildee (dist/) ET l'API sur le meme port.
 // - ACCES COMME LA V1 (decision utilisateur 25/10/2026 12h57) : pas de connexion.
@@ -141,6 +141,19 @@ export async function handleApi(store, method, url, body) {
           const original=cleanTemplate(body.original);
           if(!original||JSON.stringify(original)!==JSON.stringify(currentTemplate))throw Error('Les horaires ou les affectations ont changé. Rechargez cette semaine type avant d’enregistrer.');
         }
+        if(body.backups!==undefined){
+          const all=dutyBackups(current),existing=all[m[1]]||{};
+          for(const parity of ['paire','impaire']){
+            if(!Array.isArray(body.backups[parity])||body.backups[parity].length!==7||!Array.isArray(body.originalBackups?.[parity])||body.originalBackups[parity].length!==7)throw Error('Rôles remplaçants invalides.');
+            for(let i=0;i<7;i++)for(const role of ['open','close']){
+              if(typeof body.backups[parity][i]?.[role]!=='boolean'||typeof body.originalBackups[parity][i]?.[role]!=='boolean')throw Error('Rôles remplaçants invalides.');
+              if(!!existing[parity]?.[i]?.[role]!==body.originalBackups[parity][i][role])throw Error('Les remplaçants ont changé. Rechargez cette semaine type avant d’enregistrer.');
+              if(body.backups[parity][i][role]&&!tpl[parity][i].worked)throw Error('Un remplaçant doit travailler ce jour-là.');
+            }
+          }
+          all[m[1]]=Object.fromEntries(['paire','impaire'].map(parity=>[parity,Object.fromEntries(body.backups[parity].map((roles,i)=>[i,roles]))]));
+          current.settings??={};current.settings.dutyBackups=JSON.stringify(all);
+        }
         current.templates[m[1]]=tpl;
       });
       return { code: 200, obj: { template: tpl } };
@@ -256,4 +269,4 @@ export function createApp(storeOrPath, distDir) {
     const out = await handleApi(store, req.method, url, body);
     return json(res, out.code, out.obj);
   });
-}
+          }
