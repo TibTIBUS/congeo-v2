@@ -1,3 +1,4 @@
+import {effectiveDutyAssignments} from './dutyReplacements.js';
 import {getDayPlan} from './planning.js';
 import {parseISO} from './dates.js';
 import {getOpenSundays} from './sundays.js';
@@ -20,5 +21,6 @@ export function employeeCalendarDay(schedule,employeeId,day,requests=[]){
  const date=parseISO(day),plan=getDayPlan(schedule.templates||{},schedule.overrides||{},employeeId,date);
  if((date.getDay()===0&&!getOpenSundays(schedule).includes(day))||!plan.worked||!plan.start||!plan.end)return {kind:'rest',label:'Repos'};
  const slots=plan.pauseStart&&plan.pauseEnd?[[plan.start,plan.pauseStart],[plan.pauseEnd,plan.end]]:[[plan.start,plan.end]];
- return {kind:'work',start:clock(plan.start),end:clock(plan.end),ranges:slots.map(([a,b])=>`${clock(a)}–${clock(b)}`),label:'Mes horaires : '+slots.map(([a,b])=>`${clock(a)} à ${clock(b)}`).join(' et ')};
-}
+ const replacement=effectiveDutyAssignments(schedule,employeeId,day);
+ return {kind:'work',replacementOpen:replacement.some(x=>x.role==='open'),replacementClose:replacement.some(x=>x.role==='close'),start:clock(plan.start),end:clock(plan.end),ranges:slots.map(([a,b])=>`${clock(a)}–${clock(b)}`),label:'Mes horaires : '+slots.map(([a,b])=>`${clock(a)} à ${clock(b)}`).join(' et ')+(replacement.some(x=>x.role==='open')?', remplacement ouverture':'')+(replacement.some(x=>x.role==='close')?', remplacement fermeture':'')};
+                                                                                                                                                                                                                                                                                                                                         }
