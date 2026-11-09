@@ -1,3 +1,4 @@
+import {schoolOn} from './school.js';
 import {isClosedHoliday} from './publicHolidays.js';
 import {effectiveDutyAssignments} from './dutyReplacements.js';
 import {getDayPlan} from './planning.js';
@@ -20,6 +21,7 @@ export function employeeCalendarDay(schedule,employeeId,day,requests=[]){
  if(isClosedHoliday(schedule,day))return {kind:'holiday',label:'Férié · magasin fermé'};
  const absence=requests.find(r=>r.employee_id===employeeId&&r.status==='approved'&&requestCoversDay(r,day,getOpenSundays(schedule)));
  if(absence)return {kind:absence.leave_type==='sick'?'sick':absence.leave_type==='recovery'?'recovery':'leave',label:absence.leave_type==='sick'?'Arrêt de travail':absence.leave_type==='recovery'?'Récupération':'Congé validé'};
+ if(schoolOn(schedule,employeeId,day))return {kind:'school',label:'École'};
  const date=parseISO(day),plan=getDayPlan(schedule.templates||{},schedule.overrides||{},employeeId,date);
  if((date.getDay()===0&&!getOpenSundays(schedule).includes(day))||!plan.worked||!plan.start||!plan.end)return {kind:'rest',label:'Repos'};
  const slots=plan.pauseStart&&plan.pauseEnd?[[plan.start,plan.pauseStart],[plan.pauseEnd,plan.end]]:[[plan.start,plan.end]];
