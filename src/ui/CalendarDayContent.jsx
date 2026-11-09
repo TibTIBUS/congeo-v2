@@ -11,7 +11,7 @@ export default function CalendarDayContent({personal,events,actor,employeeName})
  // An approved personal absence already appears in the personal section.
  const teamEvents=events.filter(request=>!(personal&&['leave','recovery','sick'].includes(personal.kind)&&request.employee_id===actor&&request.status==='approved'));
  return <>
-  {personal&&<span className={'calendar-personal calendar-personal-'+personal.kind}>
+  {personal?.replacementOpen&&<span className="replacement-label">Remplacement ouverture</span>}{personal?.replacementClose&&<span className="replacement-label">Remplacement fermeture</span>}{personal&&<span className={'calendar-personal calendar-personal-'+personal.kind}>
    {personal.kind==='work'?<span className="calendar-shift-ranges">{personal.ranges.map(range=><span key={range}>{range}</span>)}</span>:<span className="calendar-personal-status">{personal.kind==='sick'?'Mon arrêt de travail':personal.kind==='rest'?'Repos':personal.kind==='recovery'?'Ma récupération':'Mon congé'}</span>}
   </span>}
   {teamEvents.length>0&&<span className="calendar-team-absences">
