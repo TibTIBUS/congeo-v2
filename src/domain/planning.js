@@ -1,3 +1,4 @@
+import {isClosedHoliday} from './publicHolidays.js';
 import {effectiveDutyAssignments} from './dutyReplacementState.js';
 // Planning : gabarits semaines paire/impaire par salarie, plan hebdo genere
 // selon la parite ISO, ajustable jour par jour (overrides).
@@ -70,7 +71,7 @@ export function weekCoverage(plansByEmployee,days=SHOP_DAYS) {
 export function effectiveWeekPlan(data,employeeId,year,week){
  const absences=approvedAbsences(data).filter(r=>r.employeeId===employeeId);
  return getWeekPlan(data.templates,data.overrides,employeeId,year,week).map(d=>{
-  const day=toISODate(d.date),absent=absences.some(r=>r.type==='recovery'?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day);
+  const day=toISODate(d.date);if(isClosedHoliday(data,day))return {...d,worked:false,start:null,end:null,pauseStart:null,pauseEnd:null,open:false,close:false,holidayClosed:true};const absent=absences.some(r=>r.type==='recovery'?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day);
   const replacement=effectiveDutyAssignments(data,employeeId,day);
   return absent?{...d,worked:false,open:false,close:false}: {...d,open:d.open||replacement.some(x=>x.role==='open'),close:d.close||replacement.some(x=>x.role==='close'),replacementOpen:replacement.some(x=>x.role==='open'),replacementClose:replacement.some(x=>x.role==='close')};
  });
