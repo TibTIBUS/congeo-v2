@@ -41,7 +41,7 @@ try {
   await page.click('button:has-text("Hugo B.")');
   await page.waitForSelector("text=Poser une demande");
   check("vue salarié après choix du nom", true);
-  check("deux plages séparées par la coupure visibles au planning", (await page.locator("text=08h00 – 12h00 / 13h00 – 17h00").count()) > 0);
+  check("deux plages séparées par la coupure visibles au planning", (await page.locator("text=8h00 – 12h00 / 13h00 – 17h00").count()) > 0);
   check("pas d'onglets admin pour un salarié", (await page.locator("text=Semaines paire/impaire").count()) === 0);
   check("aucun lien vers l'adresse admin depuis l'espace salarié", (await page.locator('a[href*="#/admin"], a[href*="admin"]').count()) === 0);
 

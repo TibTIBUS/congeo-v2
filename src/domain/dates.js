@@ -56,3 +56,17 @@ export function fmtRange(monday) {
   const sunday = addDays(monday, 6);
   return `${monday.getDate()} ${MOIS[monday.getMonth()]} – ${sunday.getDate()} ${MOIS[sunday.getMonth()]} ${sunday.getFullYear()}`;
 }
+
+// Heures affichées sans zéro initial : « 9:30 », pas « 09:30 » (demande du 19 nov 2026).
+export const displayTime = (v) => (v ? String(v).replace(/^0(?=\d:)/, "") : "");
+// Saisie acceptée : « 9:30 », « 09:30 », « 9h30 », « 9.30 » ; renvoie « 09:30 »,
+// chaîne vide si vide, null si invalide. Les données restent stockées en HH:MM.
+export function normalizeTime(raw) {
+  const t = String(raw ?? "").trim();
+  if (t === "") return "";
+  const m = t.match(/^(\d{1,2})[:hH.](\d{2})$/);
+  if (!m) return null;
+  const h = +m[1], min = +m[2];
+  if (h > 23 || min > 59) return null;
+  return String(h).padStart(2, "0") + ":" + m[2];
+}

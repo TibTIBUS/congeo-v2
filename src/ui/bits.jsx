@@ -1,6 +1,7 @@
 import React from "react";
 import { DAY_NAMES } from "../domain/dates.js";
 import { fmtHours } from "../domain/planning.js";
+import { displayTime, normalizeTime } from "../domain/dates.js";
 
 export function Badges({ d }) {
   if (!d.worked) return null;
@@ -26,7 +27,21 @@ export function WeekNav({ onPrev, onNext, children }) {
 export function Hm({ min, strong }) {
   return <span style={strong ? { fontWeight: 800, color: "var(--pri)" } : {}}>{fmtHours(min)}</span>;
 }
-const hm = (s) => s.replace(":", "h");
+const hm = (s) => displayTime(s).replace(":", "h");
+// Champ horaire texte : affiche « 9:30 », accepte « 9:30 » / « 09:30 » / « 9h30 »,
+// normalise en « 09:30 » pour le stockage. Une frappe invalide est gardée en brouillon
+// puis annulée à la perte de focus (jamais envoyée).
+export function TimeField({ value, onChange, className, ...rest }) {
+  const [draft, setDraft] = React.useState(null);
+  const shown = draft ?? displayTime(value || "");
+  const handle = (raw) => {
+    const n = normalizeTime(raw);
+    if (n === null) { setDraft(raw); return; }
+    setDraft(null);
+    onChange(n);
+  };
+  return <input type="text" inputMode="numeric" autoComplete="off" placeholder="9:30" className={["time-input", className].filter(Boolean).join(" ")} value={shown} onChange={(e) => handle(e.target.value)} onBlur={() => setDraft(null)} {...rest} />;
+}
 export const fmtRange2 = (d) => d.start && d.end ? `${hm(d.start)} – ${hm(d.end)}` : "";
 // Deux plages de travail séparées par la coupure du midi (demande du 25 oct, 12h22) :
 // ex. "08h00 – 12h30 / 14h00 – 19h00". Sans pause : une seule plage.

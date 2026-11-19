@@ -12,7 +12,7 @@ import { recoveryBalance } from "../store.js";
 import { checkRecoveryValidation, requestDates, recoveryPlannedMinutes } from "../domain/requests.js";
 import { buildMatrix, buildXlsx } from "../domain/exportXlsx.js";
 import { holidaySegments } from "../domain/schoolHolidays.js";
-import { Badges, Status, PariteBadge, WeekNav, fmtRanges } from "./bits.jsx";
+import { Badges, Status, PariteBadge, WeekNav, fmtRanges, TimeField } from "./bits.jsx";
 
 const OFF = { worked: false, start: null, end: null, pauseStart: null, pauseEnd: null, open: false, close: false };
 
@@ -73,9 +73,9 @@ function DayEditor({ data, actions, edit, onClose }) {
     <b>{emp.name} · {edit.iso}</b>
     <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 9, flexWrap: "wrap" }}>
       <label><input type="checkbox" checked={d.worked} onChange={(e) => set("worked", e.target.checked)} /> Travaillé</label>
-      <input type="time" value={d.start || ""} onChange={(e) => set("start", e.target.value)} disabled={!d.worked} />
-      <input type="time" value={d.end || ""} onChange={(e) => set("end", e.target.value)} disabled={!d.worked} />
-      <label className="mut" style={{ fontSize: 12, display: "flex", gap: 5, alignItems: "center" }}>Pause <input type="time" value={d.pauseStart || ""} onChange={(e) => set("pauseStart", e.target.value || null)} disabled={!d.worked} /> → <input type="time" value={d.pauseEnd || ""} onChange={(e) => set("pauseEnd", e.target.value || null)} disabled={!d.worked} /></label>
+      <TimeField value={d.start || ""} onChange={(v) => set("start", v)} disabled={!d.worked} aria-label="Début" />
+      <TimeField value={d.end || ""} onChange={(v) => set("end", v)} disabled={!d.worked} aria-label="Fin" />
+      <label className="mut" style={{ fontSize: 12, display: "flex", gap: 5, alignItems: "center" }}>Pause <TimeField value={d.pauseStart || ""} onChange={(v) => set("pauseStart", v || null)} disabled={!d.worked} aria-label="Début de pause" /> → <TimeField value={d.pauseEnd || ""} onChange={(v) => set("pauseEnd", v || null)} disabled={!d.worked} aria-label="Fin de pause" /></label>
       <label><input type="checkbox" checked={d.open} onChange={(e) => set("open", e.target.checked)} disabled={!d.worked} /> Ouverture</label>
       <label><input type="checkbox" checked={d.close} onChange={(e) => set("close", e.target.checked)} disabled={!d.worked} /> Fermeture</label>
       <button className="btn" onClick={save}>Enregistrer</button>
