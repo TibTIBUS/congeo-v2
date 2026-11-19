@@ -14,7 +14,7 @@ import {workdays,weekPeriod,blockedReason} from '../src/domain/calendarRules.js'
 
 const DATE='2027-03-14';
 const work=()=>({...defaultWorkTemplates().paire[0],open:true,close:true});
-function fixture(){return {seedVersion:3,employees:[{id:'a',name:'A',active:true},{id:'b',name:'B',active:true}],templates:{a:defaultWorkTemplates(),b:defaultWorkTemplates()},overrides:{},requests:[],recoveryLedger:[],blocks:[],settings:{firstWeek:'false',blocksConfigured:'true'}};}
+function fixture(){return {seedVersion:3,employees:[{id:'a',name:'A',active:true},{id:'b',name:'B',active:true}],templates:{a:defaultWorkTemplates(),b:defaultWorkTemplates()},overrides:{},requests:[],recoveryLedger:[],blocks:[],settings:{firstWeek:'false',blocksConfigured:'true',recoveryKnown:JSON.stringify({a:true,b:true})}};}
 function storeFor(db){const path=join(mkdtempSync(join(tmpdir(),'congeo-sundays-')),'db.json');writeFileSync(path,JSON.stringify(db));return openDb(path);}
 const call=(store,path,method='GET',body={})=>handleApi(store,method,new URL(path,'http://test'),body);
 const payload=(db,date=DATE)=>({admin:true,date,open:true,original:sundaySnapshot(db,date),rows:db.employees.filter(e=>e.active!==false).map((e,i)=>({employeeId:e.id,day:i===0?work():{worked:false}}))});

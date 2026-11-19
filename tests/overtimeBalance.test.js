@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {changePlanning} from '../server/restored.js';
 import {plannedMinutes} from '../src/domain/planning.js';
-const fixture=()=>({employees:[{id:'a',name:'A',active:true},{id:'b',name:'B',active:true}],templates:{},overrides:{},requests:[],blocks:[],settings:{},recoveryLedger:[{id:'credit',employeeId:'a',deltaMin:600,reason:'Heures supplémentaires'},{id:'spent',employeeId:'a',deltaMin:-120,reason:'Récupération validée',requestId:'r1'}]});
+const fixture=()=>({employees:[{id:'a',name:'A',active:true},{id:'b',name:'B',active:true}],templates:{},overrides:{},requests:[],blocks:[],settings:{recoveryKnown:JSON.stringify({a:true,b:true})},recoveryLedger:[{id:'credit',employeeId:'a',deltaMin:600,reason:'Heures supplémentaires'},{id:'spent',employeeId:'a',deltaMin:-120,reason:'Récupération validée',requestId:'r1'}]});
 const set=(db,minutes,originalBalance=480,admin=true)=>changePlanning(db,{action:'hoursSetBalance',admin,target:'a',employee:'a',minutes,originalBalance});
 describe('inline team overtime balances',()=>{
  it('gives a new employee editable default hours with 7 h 30 of work per day',()=>{

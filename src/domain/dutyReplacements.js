@@ -3,9 +3,10 @@ import {isClosedHoliday} from './publicHolidays.js';
 import {getDayPlan} from './planning.js';
 import {parseISO,toISODate,isoWeek,parityOf} from './dates.js';
 import {approvedAbsences} from './sickLeave.js';
+import {isDatedAbsence} from './requests.js';
 export function dutyBackups(data){try{return JSON.parse(data.settings?.dutyBackups||'{}');}catch{return {};}}
-export const absenceOn=(r,day)=>r.type==='recovery'?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day;
-export const requestDayList=r=>r.type==='recovery'?[...new Set(r.dates||[])].sort():Array.from({length:Math.max(0,Math.min(370,Math.round((parseISO(r.dateEnd)-parseISO(r.dateStart))/86400000)+1))},(_,i)=>{const d=parseISO(r.dateStart);d.setDate(d.getDate()+i);return toISODate(d);});
+export const absenceOn=(r,day)=>isDatedAbsence(r.type)?(r.dates||[]).includes(day):r.dateStart<=day&&r.dateEnd>=day;
+export const requestDayList=r=>isDatedAbsence(r.type)?[...new Set(r.dates||[])].sort():Array.from({length:Math.max(0,Math.min(370,Math.round((parseISO(r.dateEnd)-parseISO(r.dateStart))/86400000)+1))},(_,i)=>{const d=parseISO(r.dateStart);d.setDate(d.getDate()+i);return toISODate(d);});
 export {storedDutyAssignments,effectiveDutyAssignments} from './dutyReplacementState.js';
 import {effectiveDutyAssignments} from './dutyReplacementState.js';
 export function replacementProposal(data,request){

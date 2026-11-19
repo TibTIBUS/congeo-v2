@@ -19,7 +19,7 @@ import { openDb } from "./db.js";
 import { createPgStore } from "./db-pg.js";
 import { getWeekPlan } from "../src/domain/planning.js";
 import { isoWeek, isoWeeksInYear, parseISO } from "../src/domain/dates.js";
-import { requestDates, leaveDates } from "../src/domain/requests.js";
+import { requestDates, leaveDates, isBalanceKnown } from "../src/domain/requests.js";
 import { leaveBlockedReason } from "../src/domain/blocks.js";
 import {getOpenSundays} from '../src/domain/sundays.js';
 import {applySundayOpening} from './sundays.js';

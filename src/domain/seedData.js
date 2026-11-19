@@ -50,7 +50,7 @@ export function seed() {
       { id: "l4", employeeId: "ines", deltaMin: 9 * 60, reason: "Remplacement samedi", at: "2027-02-20T18:00:00" },
     ],
     blocks: [],
-    settings: {},
+    settings: { recoveryKnown: JSON.stringify({ emma: true, hugo: true, ines: true, lea: true, tom: true }) },
   };
 }
 

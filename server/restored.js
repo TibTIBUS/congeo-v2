@@ -4,23 +4,26 @@ import {replacementProposal,validateReplacementChoices} from '../src/domain/duty
 // V1 leave workflows on the V2 data model. All mutations run under the store lock.
 import { randomUUID } from 'node:crypto';
 import {workdays,blockedReason,today,validDate,defaultBlocks} from '../src/domain/calendarRules.js';
-import {recoveryPlannedMinutes} from '../src/domain/requests.js';
+import {recoveryPlannedMinutes,RECOVERY_OTHER,isDatedAbsence,balanceKnownMap,isBalanceKnown,markBalanceKnown} from '../src/domain/requests.js';
 import {defaultWorkTemplates,STAFF_COLORS} from '../src/domain/defaults.js';
 import {getOpenSundays} from '../src/domain/sundays.js';
 import {sickCalendarRows,hasSickConflict} from '../src/domain/sickLeave.js';
 export const id=()=>randomUUID();
 const details=r=>r.details||{};
-const baseDates=(r,openSundays=[])=>r.type==='recovery'?[...new Set(r.dates||[])]:r.dateStart===r.dateEnd&&validDate(r.dateStart)&&new Date(r.dateStart+'T12:00:00Z').getUTCDay()===0&&!openSundays.includes(r.dateStart)?[]:workdays(r.dateStart,r.dateEnd,openSundays);
+const baseDates=(r,openSundays=[])=>isDatedAbsence(r.type)?[...new Set(r.dates||[])]:r.dateStart===r.dateEnd&&validDate(r.dateStart)&&new Date(r.dateStart+'T12:00:00Z').getUTCDay()===0&&!openSundays.includes(r.dateStart)?[]:workdays(r.dateStart,r.dateEnd,openSundays);
 export const dates=(r,openSundays=[],db={})=>holidayRequestDays(db,r,baseDates(r,openSundays));
 const balance=(db,emp)=>db.recoveryLedger.filter(l=>l.employeeId===emp).reduce((s,l)=>s+Number(l.deltaMin),0);
 export function toV1(r,openSundays=[],db={}){const ds=dates(r,openSundays,db);return {id:r.id,employee_id:r.employeeId,leave_type:r.type,start:r.dateStart||ds[0],end:r.dateEnd||ds.at(-1),days:JSON.stringify(ds),status:r.status==='rejected'?'refused':r.status,created:r.createdAt,...details(r)};}
-export function planningData(db,admin,actor){return {employmentStarts:employmentStarts(db),schoolPeriods:schoolPeriods(db),holidayYears:Object.fromEntries(Object.entries(holidayCalendar(db).years||{}).map(([year,entry])=>[year,{effectiveFrom:entry.effectiveFrom}])),closedHolidays:closedHolidayDates(db),openSundays:getOpenSundays(db),employees:db.employees.map(e=>({id:e.id,name:e.name,role:e.role,color:e.color,active:e.active===false?0:1})),requests:[...db.requests.map(r=>{const x=toV1(r,getOpenSundays(db),db);if(!admin&&actor!==r.employeeId){delete x.note;delete x.answer;}return x;}),...sickCalendarRows(db)],blocks:(db.settings?.blocksConfigured==='true'||db.blocks?.length)?db.blocks:defaultBlocks,firstWeek:db.settings?.firstWeek!=='false',profile:db.employees.find(e=>e.id===actor)||null,outbox:admin?(db.outbox||[]):[],mailReady:!!process.env.RESEND_API_KEY&&!!process.env.EMAIL_FROM};}
+export function planningData(db,admin,actor){return {recoveryKnown:balanceKnownMap(db),employmentStarts:employmentStarts(db),schoolPeriods:schoolPeriods(db),holidayYears:Object.fromEntries(Object.entries(holidayCalendar(db).years||{}).map(([year,entry])=>[year,{effectiveFrom:entry.effectiveFrom}])),closedHolidays:closedHolidayDates(db),openSundays:getOpenSundays(db),employees:db.employees.map(e=>({id:e.id,name:e.name,role:e.role,color:e.color,active:e.active===false?0:1})),requests:[...db.requests.map(r=>{const x=toV1(r,getOpenSundays(db),db);if(!admin&&actor!==r.employeeId){delete x.note;delete x.answer;}return x;}),...sickCalendarRows(db)],blocks:(db.settings?.blocksConfigured==='true'||db.blocks?.length)?db.blocks:defaultBlocks,firstWeek:db.settings?.firstWeek!=='false',profile:db.employees.find(e=>e.id===actor)||null,outbox:admin?(db.outbox||[]):[],mailReady:!!process.env.RESEND_API_KEY&&!!process.env.EMAIL_FROM};}
 function queued(db,r,body){const e=db.employees.find(e=>e.id===r.employeeId);if(e?.notify&&e.email){db.outbox??=[];db.outbox.push({id:id(),employee_id:e.id,subject:'Votre demande d’absence',body,status:'queued',created:new Date().toISOString()});}}
 function checkDates(db,start,end,allowPast=false){const days=workdays(start,end,getOpenSundays(db)).filter(day=>!isClosedHoliday(db,day));if(!days.length)throw Error('La période ne contient aucun jour ouvert (jour férié ou dimanche fermé).');if(!allowPast&&start<today())throw Error('Choisissez une date à partir d’aujourd’hui.');const blocks=(db.settings?.blocksConfigured==='true'||db.blocks?.length)?db.blocks:defaultBlocks;const bad=days.find(d=>blockedReason(d,blocks,db.settings?.firstWeek!=='false',getOpenSundays(db)));if(bad)throw Error(`${bad} : ${blockedReason(bad,blocks,db.settings?.firstWeek!=='false',getOpenSundays(db))}. Choisissez une autre période.`);return days;}
 function checkCapacity(db,r){const ds=dates(r,getOpenSundays(db),db);if(hasSickConflict(db,r.employeeId,ds))throw Error('Un arrêt de travail est enregistré pour ce salarié sur ces dates.');for(const day of ds){const others=db.requests.filter(q=>q.id!==r.id&&q.status==='approved'&&dates(q,getOpenSundays(db),db).includes(day));if(others.some(q=>q.employeeId===r.employeeId))throw Error('Ce salarié a déjà une absence validée sur cette période.');if(others.length>=(details(r).override?2:1))throw Error(details(r).override?'Deux personnes sont déjà absentes sur cette période.':'Une personne est déjà absente sur cette période. Une dérogation est nécessaire.');}}
-function deduct(db,r){if(r.type!=='recovery')return;const need=recoveryPlannedMinutes({...r,dates:(r.dates||[]).filter(day=>!isClosedHoliday(db,day))},db.templates,db.overrides);if(need<=0)throw Error('Aucune heure n’est prévue pour cette récupération. Renseignez d’abord le planning.');if(need>balance(db,r.employeeId))throw Error('Le solde de récupération ne couvre pas les heures prévues.');r.deductedMin=need;db.recoveryLedger.push({id:id(),employeeId:r.employeeId,deltaMin:-need,reason:'Récupération validée',requestId:r.id,at:new Date().toISOString()});}
-function refund(db,r){if(r.status==='approved'&&r.type==='recovery'&&r.deductedMin>0){db.recoveryLedger.push({id:id(),employeeId:r.employeeId,deltaMin:r.deductedMin,reason:'Récupération recréditée après correction ou suppression',requestId:r.id,at:new Date().toISOString()});r.deductedMin=0;}}
-function absence(r,start,end,type,openSundays=[]){r.type=type||r.type;if(!['leave','recovery'].includes(r.type))throw Error('Type d’absence invalide.');if(r.type==='recovery'){r.dates=workdays(start,end,openSundays);delete r.dateStart;delete r.dateEnd;}else{r.dateStart=start;r.dateEnd=end;delete r.dates;}}
+function deduct(db,r){if(r.type!=='recovery')return;if(!isBalanceKnown(db,r.employeeId))throw Error('Le solde de récupération de ce salarié est à renseigner : la validation est suspendue tant que le solde n’est pas enregistré dans l’onglet « Récupération ».');const need=recoveryPlannedMinutes({...r,dates:(r.dates||[]).filter(day=>!isClosedHoliday(db,day))},db.templates,db.overrides);if(need<=0)throw Error('Aucune heure n’est prévue pour cette récupération. Renseignez d’abord le planning.');if(need>balance(db,r.employeeId))throw Error('Le solde de récupération ne couvre pas les heures prévues.');r.deductedMin=need;db.recoveryLedger.push({id:id(),employeeId:r.employeeId,deltaMin:-need,reason:'Récupération validée',requestId:r.id,at:new Date().toISOString()});}
+function refund(db,r){if(r.status==='approved'&&r.type==='recovery'&&r.deductedMin>0){// Import « déjà validée » : le décompte n'a JAMAIS touché le journal V2,
+// donc aucune recréditation (sinon Chloé 9-10/12 serait créditée de 15 h
+// que l'app n'a pas débitées — la règle : pas de double mouvement).
+const imported=r.details?.importedRecovery===1;if(!imported)db.recoveryLedger.push({id:id(),employeeId:r.employeeId,deltaMin:r.deductedMin,reason:'Récupération recréditée après correction ou suppression',requestId:r.id,at:new Date().toISOString()});r.deductedMin=0;if(imported)delete r.details.importedRecovery;}}
+function absence(r,start,end,type,openSundays=[]){r.type=type||r.type;if(!['leave','recovery',RECOVERY_OTHER].includes(r.type))throw Error('Type d’absence invalide.');if(isDatedAbsence(r.type)){r.dates=workdays(start,end,openSundays);delete r.dateStart;delete r.dateEnd;}else{r.dateStart=start;r.dateEnd=end;delete r.dates;}}
 function stale(r,p){const x=toV1(r);if((p.originalStart!==undefined&&p.originalStart!==x.start)||(p.originalEnd!==undefined&&p.originalEnd!==x.end)||(p.originalStatus!==undefined&&p.originalStatus!==x.status))throw Error('Cette demande a changé. Actualisez le planning avant de continuer.');}
 export function changePlanning(db,p){
  db.settings??={};db.blocks??=[];db.outbox??=[];
@@ -35,20 +38,39 @@ export function changePlanning(db,p){
  if(a==='importApprovedLeave'){
   requireAdmin();const emp=String(p.target||'');if(!db.employees.some(e=>e.id===emp&&e.active!==false))throw Error('Sélectionnez un salarié actif.');
   if(p.confirm!==true)throw Error('Confirmez que le congé est déjà validé.');
+  const leaveType=p.leaveType||'leave';if(!['leave','recovery',RECOVERY_OTHER].includes(leaveType))throw Error('Type d’absence invalide.');
   const ds=checkDates(db,p.start,p.end,true);
   if(ds.some(day=>schoolOn(db,emp,day)))throw Error('Une période École croise ces dates.');
-  if(db.requests.some(r=>r.employeeId===emp&&r.type==='leave'&&r.status==='approved'&&r.dateStart===p.start&&r.dateEnd===p.end))return;
-  const r={id:id(),employeeId:emp,type:'leave',status:'approved',dateStart:p.start,dateEnd:p.end,createdAt:new Date().toISOString(),details:{note:'Congé déjà validé · import planning',override:p.override===true?1:0,source:'planning-import'}};
+  const note=String(p.note||'').slice(0,1500);
+  if(leaveType==='leave'){
+   if(db.requests.some(r=>r.employeeId===emp&&r.type==='leave'&&r.status==='approved'&&r.dateStart===p.start&&r.dateEnd===p.end))return;
+   const r={id:id(),employeeId:emp,type:'leave',status:'approved',dateStart:p.start,dateEnd:p.end,createdAt:new Date().toISOString(),details:{note:note||'Congé déjà validé · import planning',override:p.override===true?1:0,source:'planning-import'}};
+   checkCapacity(db,r);db.requests.push(r);return;
+  }
+  // Récupérations importées : visibles comme validées, SANS nouveau décompte
+  // du compteur horaire (le solde, une fois renseigné, tient déjà compte des
+  // heures consommées — ex. Chloé 9-10/12 = 15 h, jamais débitées deux fois).
+  if(db.requests.some(r=>r.employeeId===emp&&r.type===leaveType&&r.status==='approved'&&JSON.stringify([...(r.dates||[])].sort())===JSON.stringify([...ds].sort())))return;
+  const r={id:id(),employeeId:emp,type:leaveType,status:'approved',dates:ds,createdAt:new Date().toISOString(),details:{note:note||(leaveType==='recovery'?'Récupération déjà validée · import sans nouveau décompte':'Autre récupération déjà validée · import planning'),override:p.override===true?1:0,source:'planning-import'}};
+  if(leaveType==='recovery'){
+   r.deductedMin=recoveryPlannedMinutes(r,db.templates,db.overrides);
+   r.details.importedRecovery=1; // décompte d'affichage seulement : aucun mouvement au journal
+  }
   checkCapacity(db,r);db.requests.push(r);return;
  }
  if(a==='request'){const emp=admin?String(p.target):actor;if(!db.employees.some(e=>e.id===emp&&e.active!==false))throw Error('Sélectionnez un salarié actif.');checkDates(db,p.start,p.end);const r={id:id(),employeeId:emp,type:p.leaveType||'leave',status:'pending',createdAt:new Date().toISOString(),details:{note:String(p.note||'').slice(0,1500),override:admin&&p.override===true?1:0}};absence(r,p.start,p.end,r.type,getOpenSundays(db));checkCapacity(db,r);db.requests.push(r);return;}
  if(a==='sendMail'){requireAdmin();return;}
  if(a==='hoursSetBalance'){
   requireAdmin();const employee=String(p.target||'');if(!db.employees.some(e=>e.id===employee))throw Error('Salarié introuvable.');
-  const current=balance(db,employee),minutes=Number(p.minutes);
+  const current=balance(db,employee),minutes=Number(p.minutes),known=isBalanceKnown(db,employee);
   if(!Number.isInteger(minutes)||minutes<0||minutes>60000)throw Error('Indiquez un solde positif ou nul, en heures et minutes.');
-  if(p.originalBalance!==current)throw Error('Le solde a changé depuis son affichage. Rechargez cette ligne avant de l’enregistrer.');
-  const delta=minutes-current;if(delta)db.recoveryLedger.push({id:id(),employeeId:employee,deltaMin:delta,reason:'Correction du solde de récupération',at:new Date().toISOString()});return;
+  // Solde « à renseigner » : le premier enregistrement part de l'inconnu
+  // (originalBalance null) ; ensuite, protection contre les écritures
+  // concurrentes comme avant. Un 0 enregistré est un 0 CONFIRMÉ.
+  if(known){if(p.originalBalance!==current)throw Error('Le solde a changé depuis son affichage. Rechargez cette ligne avant de l’enregistrer.');}
+  else if(p.originalBalance!==null&&p.originalBalance!==undefined)throw Error('Le solde de ce salarié n’était pas encore renseigné. Rechargez cette ligne avant de l’enregistrer.');
+  const delta=minutes-current;if(delta)db.recoveryLedger.push({id:id(),employeeId:employee,deltaMin:delta,reason:known?'Correction du solde de récupération':'Solde initial de récupération renseigné',at:new Date().toISOString()});
+  markBalanceKnown(db,employee);return;
  }
  if(['hoursAdd','hoursEdit','hoursDelete'].includes(a)){
   requireAdmin();const employee=String(p.target||'');if(!db.employees.some(e=>e.id===employee))throw Error('Salarié introuvable.');

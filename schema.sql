@@ -42,19 +42,26 @@ CREATE TABLE IF NOT EXISTS plan_overrides (
 
 -- Demandes : congés (plage) ou récupération (jours ponctuels).
 -- Pas de décompte de jours de congés (retiré le 25 oct 2026).
+-- type 'recovery_other' (19 nov 2026) : « autre récupération / jour férié »,
+-- jamais décomptée du compteur horaire.
+-- MIGRATION BASE EXISTANTE (à jouer au déploiement, pas avant) :
+--   ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_type_check;
+--   ALTER TABLE requests ADD CONSTRAINT requests_type_check CHECK (type IN ('leave','recovery','recovery_other'));
+--   ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_check;
+--   ALTER TABLE requests ADD CONSTRAINT requests_check CHECK ((type='leave' AND date_start IS NOT NULL AND date_end IS NOT NULL) OR (type IN ('recovery','recovery_other') AND dates IS NOT NULL));
 CREATE TABLE IF NOT EXISTS requests (
   id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   employee_id   text NOT NULL REFERENCES employees(id),
-  type          text NOT NULL CHECK (type IN ('leave','recovery')),
+  type          text NOT NULL CHECK (type IN ('leave','recovery','recovery_other')),
   date_start    date,          -- leave : début de plage incluse
   date_end      date,          -- leave : fin de plage incluse
-  dates         date[],        -- recovery : jours posés
+  dates         date[],        -- recovery / recovery_other : jours posés
   status        text NOT NULL DEFAULT 'pending' CONSTRAINT requests_status_check CHECK (status IN ('pending','approved','rejected')),
   deducted_min  integer,       -- recovery : heures décomptées à la validation
   created_at    timestamptz NOT NULL DEFAULT now(),
   decided_at    timestamptz,
   CHECK ((type = 'leave'    AND date_start IS NOT NULL AND date_end IS NOT NULL)
-      OR (type = 'recovery' AND dates IS NOT NULL))
+      OR (type IN ('recovery','recovery_other') AND dates IS NOT NULL))
 );
 
 -- Heures à récupérer : saisies admin (positif) et décomptes à la validation (négatif).

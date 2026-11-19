@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import { seedDb } from "./seed.js";
-import { checkRecoveryValidation } from "../src/domain/requests.js";
+import { checkRecoveryValidation, RECOVERY_OTHER, isBalanceKnown } from "../src/domain/requests.js";
 import {requestDates} from '../src/domain/requests.js';
 import {hasSickConflict} from '../src/domain/sickLeave.js';
 
@@ -42,11 +42,11 @@ export function openDb(path) {
       if (r.status !== "pending") return [409, { error: "Demande déjà refusée" }];
       if(hasSickConflict(d,r.employeeId,requestDates(r)))return [409,{error:'Un arrêt de travail est enregistré pour ce salarié sur ces dates.'}];
       if (r.type === "recovery") {
-        const chk = checkRecoveryValidation(r, d.templates, d.overrides, balance(d, r.employeeId));
+        const chk = checkRecoveryValidation(r, d.templates, d.overrides, balance(d, r.employeeId), isBalanceKnown(d, r.employeeId));
         if (!chk.ok) return [409, { error: chk.reason }];
         r.status = "approved"; r.deductedMin = chk.deductMinutes;
         if (chk.deductMinutes > 0) d.recoveryLedger.push({ id: "l" + Date.now(), employeeId: r.employeeId, deltaMin: -chk.deductMinutes, reason: "Récupération validée", at: new Date().toISOString() });
-      } else r.status = "approved";
+      } else r.status = "approved"; // 'leave' et 'recovery_other' : jamais de décompte horaire
       return [200, { request: r }];
     }),
     rejectRequest: async (id) => mutate((d) => {

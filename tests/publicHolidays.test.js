@@ -9,7 +9,7 @@ import {changePlanning,toV1} from '../server/restored.js';
 import {defaultWorkTemplates} from '../src/domain/defaults.js';
 import {createPgMemStore} from '../server/db-pg.js';
 import {handleApi} from '../server/index.js';
-const fixture=()=>({employees:[{id:'a',name:'Alice',active:true,notify:false,email:''},{id:'b',name:'Benoît',active:true,notify:false,email:''}],templates:{a:defaultWorkTemplates(),b:defaultWorkTemplates()},overrides:{},requests:[],settings:{firstWeek:'false',blocksConfigured:'true'},blocks:[],outbox:[],recoveryLedger:[{id:'initial',employeeId:'a',deltaMin:5000}]});
+const fixture=()=>({employees:[{id:'a',name:'Alice',active:true,notify:false,email:''},{id:'b',name:'Benoît',active:true,notify:false,email:''}],templates:{a:defaultWorkTemplates(),b:defaultWorkTemplates()},overrides:{},requests:[],settings:{firstWeek:'false',blocksConfigured:'true',recoveryKnown:JSON.stringify({a:true,b:true})},blocks:[],outbox:[],recoveryLedger:[{id:'initial',employeeId:'a',deltaMin:5000}]});
 const request=(id,status='pending',type='leave')=>({id,employeeId:'a',type,status,dateStart:'2026-11-10',dateEnd:'2026-11-12',...(type==='recovery'?{dates:['2026-11-10','2026-11-11','2026-11-12']}:{}),details:{},createdAt:'2026-11-01T12:00:00Z'});
 const payload=()=>({admin:true,year:2026,open:[],effectiveFrom:'2026-11-09'});
 const save=(db,p=payload())=>{const preview=holidayPreview(db,p);return saveHolidayCalendar(db,{...p,confirm:true,version:preview.version});};

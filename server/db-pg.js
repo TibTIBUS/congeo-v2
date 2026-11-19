@@ -13,7 +13,7 @@ import {persistChanges} from "./persist.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { seedDb } from "./seed.js";
-import { checkRecoveryValidation } from "../src/domain/requests.js";
+import { checkRecoveryValidation, RECOVERY_OTHER, isBalanceKnown } from "../src/domain/requests.js";
 import {requestDates} from '../src/domain/requests.js';
 import {hasSickConflict} from '../src/domain/sickLeave.js';
 
@@ -59,6 +59,8 @@ export async function createPgStore(client, { seedIfEmpty = true, schemaSql = nu
         [r.employeeId, r.type, r.dateStart ?? null, r.dateEnd ?? null, r.dates ?? null, r.status, r.createdAt]);
     for (const l of s.recoveryLedger)
       await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason,at) VALUES ($1,$2,$3,$4)", [l.employeeId, l.deltaMin, l.reason, l.at]);
+    for (const [key, value] of Object.entries(s.settings || {}))
+      await client.query("INSERT INTO settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING", [key, String(value)]);
   }
 
   const templatesOf = async (empId) => {
@@ -132,10 +134,11 @@ export async function createPgStore(client, { seedIfEmpty = true, schemaSql = nu
         if(hasSickConflict(await store.getDoc(),r.employeeId,requestDates(r))){await client.query('ROLLBACK');return [409,{error:'Un arrêt de travail est enregistré pour ce salarié sur ces dates.'}];}
         let deduct = 0;
         if (r.type === "recovery") {
-          const chk = checkRecoveryValidation(r, { [r.employeeId]: await templatesOf(r.employeeId) }, await overridesOf(r.employeeId), await balanceOf(r.employeeId));
+          const settings = Object.fromEntries((await q("SELECT * FROM settings")).map((row) => [row.key, row.value]));
+          const chk = checkRecoveryValidation(r, { [r.employeeId]: await templatesOf(r.employeeId) }, await overridesOf(r.employeeId), await balanceOf(r.employeeId), isBalanceKnown({ settings }, r.employeeId));
           if (!chk.ok) { await client.query("ROLLBACK"); return [409, { error: chk.reason }] };
           deduct = chk.deductMinutes;
-        }
+        } // 'recovery_other' : validable sans décompte du compteur horaire
         await client.query("UPDATE requests SET status='approved', deducted_min=$1, decided_at=now() WHERE id=$2", [deduct, requestId]);
         if (deduct > 0)
           await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason) VALUES ($1,$2,$3)", [r.employeeId, -deduct, "Récupération validée"]);

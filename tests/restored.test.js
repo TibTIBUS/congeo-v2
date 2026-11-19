@@ -6,7 +6,7 @@ import {openDb} from '../server/db.js';
 import {changePlanning,planningData} from '../server/restored.js';
 import {effectiveWeekPlan,weekCoverage} from '../src/domain/planning.js';
 const off=()=>({worked:false});const day=()=>({worked:true,start:'09:30',end:'19:00',pauseStart:'12:30',pauseEnd:'14:00',open:true,close:true});
-function fixture(){const employees=['a','b','c'].map(id=>({id,name:id,active:true}));const templates=Object.fromEntries(employees.map(e=>[e.id,{paire:Array.from({length:7},(_,i)=>i<6?day():off()),impaire:Array.from({length:7},(_,i)=>i<6?day():off())}]));return {employees,templates,overrides:{},requests:[],recoveryLedger:[],blocks:[],settings:{firstWeek:'true',blocksConfigured:'true'}};}
+function fixture(){const employees=['a','b','c'].map(id=>({id,name:id,active:true}));const templates=Object.fromEntries(employees.map(e=>[e.id,{paire:Array.from({length:7},(_,i)=>i<6?day():off()),impaire:Array.from({length:7},(_,i)=>i<6?day():off())}]));return {employees,templates,overrides:{},requests:[],recoveryLedger:[],blocks:[],settings:{firstWeek:'true',blocksConfigured:'true',recoveryKnown:JSON.stringify({a:true,b:true,c:true})}};}
 const request=(employee,start='2027-02-15',type='leave')=>({action:'request',employee,start,end:start,leaveType:type});
 describe('restored V1 leave workflows',()=>{
  it('capacity, max-two override, employee duplication, stale deletion and release',()=>{
