@@ -5,6 +5,7 @@ import {ChevronLeft,ChevronRight,Coffee,Timer,Utensils,CalendarOff} from 'lucide
 import OvertimeOverview from './OvertimeOverview';
 import MonthlyOvertime from './MonthlyOvertime';
 import SickLeavePage from './SickLeavePage';
+import MonthlyDuties from './MonthlyDuties';
 import DutyAssignments from './DutyAssignments';
 import SundayOpenings from './SundayOpenings';
 import {getOpenSundays} from '../domain/sundays';
@@ -28,6 +29,7 @@ export default function ExtraPanels({tab,admin,actor,onChanged}){
  if(!admin&&!actor)return <div className="notice">Sélectionnez votre nom en haut de l’écran pour voir vos horaires.</div>;
  if(err&&!data)return <div role="alert" className="notice">{err}<button className="textbtn" onClick={refresh}>Réessayer</button></div>;
  if(!data)return <div className="panel">Chargement…</div>;
+ if(tab==='dutyTotals')return <>{err&&<div role="alert" className="notice">{err}</div>}<MonthlyDuties data={data} admin={admin} actor={actor}/></>;
  const active={...data,employees:data.employees.filter(e=>e.active!==false)};
  if(!active.employees.length)return <div className="panel">Ajoutez d’abord les salariés dans l’onglet Équipe.</div>;
  return <>{err&&<div role="alert" className="notice">{err}</div>}<div className="schedule-view">{tab==='schedule'?(admin?<Planning data={active} actions={actions}/>:<MySchedule data={active} actor={actor}/>):tab==='templates'?<Gabarits data={active} actions={actions} onReload={refresh}/>:tab==='sundays'&&admin?<SundayOpenings data={active} write={write} onReload={refresh}/>:tab==='duties'&&admin?<DutyAssignments data={active} write={write} onReload={refresh}/>:tab==='hours'?<Hours data={data} write={write}/>:<Export data={data}/>}</div></>;

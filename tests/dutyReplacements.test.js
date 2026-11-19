@@ -1,4 +1,4 @@
-import {describe,it,expect} from 'vitest';
+import {describe,it,expect,vi,beforeAll,afterAll} from 'vitest';
 import {replacementProposal,validateReplacementChoices,storedDutyAssignments} from '../src/domain/dutyReplacements.js';
 import {effectiveWeekPlan} from '../src/domain/planning.js';
 import {applyDutyAssignments,dutyState} from '../src/domain/duties.js';
@@ -6,6 +6,9 @@ import {expiredUnapproved} from '../src/domain/requestArchive.js';
 import {changePlanning} from '../server/restored.js';
 import {createPgMemStore} from '../server/db-pg.js';
 import {handleApi} from '../server/index.js';
+// Keep the fixed November fixture independent from the machine's current date.
+beforeAll(()=>{vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-11-09T12:00:00Z'));});
+afterAll(()=>vi.useRealTimers());
 const day=()=>({worked:true,start:'09:30',end:'19:00',pauseStart:'12:30',pauseEnd:'14:00',open:false,close:false});
 export function fixture(){const employees=['a','b','c','d'].map(id=>({id,name:'Atelier '+id,active:true})),templates=Object.fromEntries(employees.map(e=>[e.id,{paire:Array.from({length:7},day),impaire:Array.from({length:7},day)}]));templates.a.paire[1].open=true;return {seedVersion:3,employees,templates,overrides:{},requests:[{id:'r',employeeId:'a',type:'leave',dateStart:'2026-11-10',dateEnd:'2026-11-10',status:'pending',details:{override:0}}],settings:{blocksConfigured:'true',firstWeek:'false',dutyBackups:JSON.stringify(Object.fromEntries(['b','c','d'].map(id=>[id,{paire:{1:{open:true,close:false}}}])) )},blocks:[],recoveryLedger:[],outbox:[]};}
 const review=(d,choices=[])=>({version:replacementProposal(d,d.requests[0]).version,choices});
