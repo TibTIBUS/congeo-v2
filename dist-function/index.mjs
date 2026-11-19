@@ -5476,6 +5476,13 @@ async function persistChanges(client, before, after) {
     }
   }
   for (const l of before.recoveryLedger) if (!after.recoveryLedger.some((x) => x.id === l.id)) await q("DELETE FROM recovery_ledger WHERE id=$1", [l.id]);
+  for (const l of after.specialDayLedger || []) {
+    const prev = (before.specialDayLedger || []).find((x) => x.id === l.id);
+    if (!different(prev, l)) continue;
+    const args = [l.id, l.employeeId, l.deltaDays, l.reason, l.day || null, l.requestId || null, l.at || (/* @__PURE__ */ new Date()).toISOString()];
+    await q("INSERT INTO special_day_ledger(id,employee_id,delta_days,reason,day,request_ref,at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET employee_id=$2,delta_days=$3,reason=$4,day=$5,request_ref=$6,at=$7", args);
+  }
+  for (const l of before.specialDayLedger || []) if (!(after.specialDayLedger || []).some((x) => x.id === l.id)) await q("DELETE FROM special_day_ledger WHERE id=$1", [l.id]);
   if (different(before.blocks, after.blocks)) {
     await q("DELETE FROM blocks");
     for (const b of after.blocks) await q("INSERT INTO blocks(id,label,start_date,end_date) VALUES($1,$2,$3,$4)", [b.id, b.label, b.start, b.end]);
@@ -5542,7 +5549,7 @@ function seed() {
       { id: "l4", employeeId: "ines", deltaMin: 9 * 60, reason: "Remplacement samedi", at: "2027-02-20T18:00:00" }
     ],
     blocks: [],
-    settings: {}
+    settings: { recoveryKnown: JSON.stringify({ emma: true, hugo: true, ines: true, lea: true, tom: true }) }
   };
 }
 
@@ -5591,8 +5598,8 @@ function weekDates(year, week) {
   const mon = mondayOfISOWeek(year, week);
   return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
 }
-function parityOf(iso3) {
-  return iso3.week % 2 === 0 ? "paire" : "impaire";
+function parityOf(iso4) {
+  return iso4.week % 2 === 0 ? "paire" : "impaire";
 }
 
 // src/domain/calendarRules.js
@@ -5627,6 +5634,145 @@ function blockedReason(day, blocks, firstWeek, openSundays = []) {
 }
 var today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(/* @__PURE__ */ new Date());
 
+// src/domain/school.js
+function schoolPeriods(data) {
+  if (Array.isArray(data.schoolPeriods)) return data.schoolPeriods;
+  try {
+    return JSON.parse(data.settings?.schoolPeriods || "[]");
+  } catch {
+    return [];
+  }
+}
+var schoolOn = (data, employeeId, day) => (/* @__PURE__ */ new Date(day + "T12:00:00Z")).getUTCDay() !== 0 && schoolPeriods(data).some((p) => p.employeeId === employeeId && p.start <= day && day <= p.end);
+function saveSchoolPeriod(db, payload) {
+  if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+  const periods = schoolPeriods(db);
+  if (payload.version !== JSON.stringify(periods)) throw Error("Les p\xE9riodes ont chang\xE9. Rechargez la page.");
+  let next;
+  if (payload.remove) {
+    if (!periods.some((p) => p.id === payload.remove)) throw Error("P\xE9riode introuvable.");
+    next = periods.filter((p) => p.id !== payload.remove);
+  } else {
+    const { employeeId, start, end } = payload;
+    if (!db.employees.some((e) => e.id === employeeId && e.active !== false)) throw Error("Choisissez un salari\xE9 actif.");
+    if (!validDate(start) || !validDate(end) || end < start || (new Date(end) - new Date(start)) / 864e5 > 90) throw Error("Choisissez une p\xE9riode valide de 91 jours maximum.");
+    if (periods.some((p) => p.employeeId === employeeId && p.start <= end && start <= p.end)) throw Error("Une p\xE9riode \xC9cole existe d\xE9j\xE0 sur ces dates.");
+    if (db.requests.some((r) => r.employeeId === employeeId && r.status === "approved" && r.type !== "recovery" && r.dateStart <= end && start <= r.dateEnd)) throw Error("Un cong\xE9 valid\xE9 croise cette p\xE9riode. V\xE9rifiez les dates.");
+    next = [...periods, { id: employeeId + "|" + start + "|" + end, employeeId, start, end }];
+  }
+  db.settings ??= {};
+  db.settings.schoolPeriods = JSON.stringify(next);
+  return next;
+}
+function employmentStarts(data) {
+  try {
+    return data.employmentStarts || JSON.parse(data.settings?.employmentStarts || "{}");
+  } catch {
+    return {};
+  }
+}
+var beforeEmployment = (data, id2, day) => !!employmentStarts(data)[id2] && day < employmentStarts(data)[id2];
+
+// src/domain/sundays.js
+var isSunday = (date) => validDate(date) && (/* @__PURE__ */ new Date(date + "T12:00:00Z")).getUTCDay() === 0;
+function getOpenSundays(data) {
+  let dates2 = data?.openSundays;
+  if (!Array.isArray(dates2)) try {
+    dates2 = JSON.parse(data?.settings?.sundayOpenings || "[]");
+  } catch {
+    dates2 = [];
+  }
+  return Array.isArray(dates2) ? [...new Set(dates2.filter(isSunday))].sort() : [];
+}
+function sundaySnapshot(data, date) {
+  return { open: getOpenSundays(data).includes(date), employees: data.employees.filter((e) => e.active !== false).map((e) => e.id).sort(), plans: Object.fromEntries(Object.entries(data.overrides || {}).filter(([key2]) => key2.endsWith("|" + date)).sort(([a], [b]) => a.localeCompare(b))) };
+}
+
+// src/domain/publicHolidays.js
+var iso2 = (d) => d.toISOString().slice(0, 10);
+function frenchHolidays(year) {
+  if (!Number.isInteger(year) || year < 2020 || year > 2100) throw Error("Ann\xE9e invalide.");
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), month = Math.floor((h + l - 7 * m + 114) / 31), day = (h + l - 7 * m + 114) % 31 + 1;
+  const easter = new Date(Date.UTC(year, month - 1, day, 12));
+  const move = (n) => {
+    const x = new Date(easter);
+    x.setUTCDate(x.getUTCDate() + n);
+    return iso2(x);
+  };
+  return [[`${year}-01-01`, "Jour de l'An"], [move(1), "Lundi de P\xE2ques"], [`${year}-05-01`, "F\xEAte du Travail"], [`${year}-05-08`, "Victoire 1945"], [move(39), "Ascension"], [move(50), "Lundi de Pentec\xF4te"], [`${year}-07-14`, "F\xEAte nationale"], [`${year}-08-15`, "Assomption"], [`${year}-11-01`, "Toussaint"], [`${year}-11-11`, "Armistice 1918"], [`${year}-12-25`, "No\xEBl"]].sort((a2, b2) => a2[0].localeCompare(b2[0])).map(([date, name]) => ({ date, name }));
+}
+function holidayCalendar(data) {
+  try {
+    return JSON.parse(data.settings?.holidayCalendar || "{}");
+  } catch {
+    return {};
+  }
+}
+function closedHolidayDates(data) {
+  if (Array.isArray(data.closedHolidays)) return data.closedHolidays;
+  return [...new Set(Object.values(holidayCalendar(data).years || {}).flatMap((y) => [...y.historyClosed || [], ...(y.closed || []).filter((day) => day >= y.effectiveFrom)]))].sort();
+}
+var isClosedHoliday = (data, day) => closedHolidayDates(data).includes(day);
+var signature = (r) => JSON.stringify([r.type, r.dateStart, r.dateEnd, r.dates]);
+function holidayRequestDays(data, r, baseDays) {
+  const saved = holidayCalendar(data).protectedRequests?.[r.id];
+  if (r.status === "approved" && saved?.signature === signature(r)) return saved.days;
+  return baseDays.filter((day) => !isClosedHoliday(data, day));
+}
+function rawDays(r) {
+  if (r.type === "recovery") return [...new Set(r.dates || [])];
+  const out = [];
+  if (!validDate(r.dateStart) || !validDate(r.dateEnd)) return out;
+  const d = /* @__PURE__ */ new Date(r.dateStart + "T12:00:00Z");
+  while (iso2(d) <= r.dateEnd && out.length < 371) {
+    out.push(iso2(d));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+function holidayPreview(db, payload) {
+  const year = Number(payload.year), holidays = frenchHolidays(year), dates2 = new Set(holidays.map((h) => h.date));
+  if (!validDate(payload.effectiveFrom) || !payload.effectiveFrom.startsWith(String(year)) || payload.effectiveFrom < today()) throw Error("Choisissez une date d\u2019effet dans l\u2019ann\xE9e et \xE0 partir d\u2019aujourd\u2019hui.");
+  if (!Array.isArray(payload.open) || new Set(payload.open).size !== payload.open.length || payload.open.some((day) => !dates2.has(day))) throw Error("Jours f\xE9ri\xE9s ouverts invalides.");
+  if (payload.open.includes(`${year}-05-01`)) throw Error("Le 1er mai reste ferm\xE9. Une exception l\xE9gale doit \xEAtre v\xE9rifi\xE9e s\xE9par\xE9ment.");
+  const previous = holidayCalendar(db), entry = { historyClosed: closedHolidayDates(db).filter((day) => day.startsWith(String(year)) && day < payload.effectiveFrom), effectiveFrom: payload.effectiveFrom, closed: holidays.filter((h) => !payload.open.includes(h.date)).map((h) => h.date) }, next = { ...previous, years: { ...previous.years, [year]: entry } }, proposed = { ...db, settings: { ...db.settings, holidayCalendar: JSON.stringify(next) } };
+  const closed = closedHolidayDates(proposed).filter((day) => day.startsWith(String(year))), current = closedHolidayDates(db), changed = [.../* @__PURE__ */ new Set([...closed, ...current.filter((day) => day.startsWith(String(year)))])].filter((day) => closed.includes(day) !== current.includes(day));
+  const impacted = (db.requests || []).filter((r) => ["approved", "pending", "proposed"].includes(r.status) && rawDays(r).some((day) => changed.includes(day))).map((r) => ({ id: r.id, employeeId: r.employeeId, status: r.status, type: r.type, days: rawDays(r).filter((day) => changed.includes(day)) }));
+  const overrides = Object.keys(db.overrides || {}).filter((key2) => changed.some((day) => key2.endsWith("|" + day)));
+  const assignments = (db.requests || []).flatMap((r) => (r.details?.dutyReplacements || []).filter((x) => changed.includes(x.day)).map((x) => ({ ...x, requestId: r.id })));
+  const version = JSON.stringify({ previous, year, entry, impacted, overrides: overrides.map((key2) => [key2, db.overrides[key2]]), assignments });
+  return { year, entry, changed, impacted, overrides, assignments, version };
+}
+function saveHolidayCalendar(db, payload) {
+  if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+  const preview = holidayPreview(db, payload);
+  if (payload.version !== preview.version || payload.confirm !== true) throw Error("V\xE9rifiez les incidences et confirmez avant d\u2019appliquer.");
+  const cfg = holidayCalendar(db), protectedRequests = { ...cfg.protectedRequests };
+  for (const r of db.requests || []) if (r.status === "approved") {
+    const base = rawDays(r).filter((day) => r.type === "recovery" || (/* @__PURE__ */ new Date(day + "T12:00:00Z")).getUTCDay() !== 0 || getOpenSundays(db).includes(day));
+    protectedRequests[r.id] = { signature: signature(r), days: holidayRequestDays(db, r, base) };
+  }
+  db.settings ??= {};
+  db.settings.holidayCalendar = JSON.stringify({ ...cfg, years: { ...cfg.years, [preview.year]: { ...preview.entry, confirmedAt: (/* @__PURE__ */ new Date()).toISOString() } }, protectedRequests });
+  return preview;
+}
+function forgetHolidayProtection(db, id2) {
+  const cfg = holidayCalendar(db);
+  if (cfg.protectedRequests?.[id2]) {
+    delete cfg.protectedRequests[id2];
+    db.settings.holidayCalendar = JSON.stringify(cfg);
+  }
+}
+
+// src/domain/dutyReplacementState.js
+function storedDutyAssignments(data) {
+  return data.dutyAssignments || data.requests?.filter((r) => r.status === "approved").flatMap((r) => (r.details?.dutyReplacements || []).map((x) => ({ ...x, requestId: r.id, absentEmployeeId: r.employeeId }))) || [];
+}
+function effectiveDutyAssignments(data, employeeId, day) {
+  if (beforeEmployment(data, employeeId, day) || isClosedHoliday(data, day) || schoolOn(data, employeeId, day)) return [];
+  return storedDutyAssignments(data).filter((x) => x.employeeId === employeeId && x.day === day);
+}
+
 // src/domain/sickLeave.js
 function sickDays(start, end) {
   if (!validDate(start) || !validDate(end) || end < start) throw Error("V\xE9rifiez les dates de d\xE9but et de fin de l\u2019arr\xEAt.");
@@ -5640,14 +5786,16 @@ function sickHistory(data) {
 }
 var activeSickLeaves = (data) => sickHistory(data).filter((r) => r.status !== "cancelled");
 var sickCovers = (record, date) => record.status !== "cancelled" && record.dateStart <= date && record.dateEnd >= date;
+var sickAsRequests = (data) => activeSickLeaves(data).map((r) => ({ ...r, type: "sick", status: "approved" }));
+var approvedAbsences = (data) => [...sickAsRequests(data), ...(data.requests || []).filter((r) => r.status === "approved")];
 var hasSickConflict = (data, employeeId, days) => activeSickLeaves(data).some((r) => r.employeeId === employeeId && days.some((d) => sickCovers(r, d)));
 var sickCalendarRows = (data) => activeSickLeaves(data).map((r) => ({ id: r.id, employee_id: r.employeeId, leave_type: "sick", start: r.dateStart, end: r.dateEnd, days: JSON.stringify(sickDays(r.dateStart, r.dateEnd)), status: "approved", created: r.createdAt, revision: r.revision }));
 
 // src/domain/planning.js
 function getDayPlan(templates, overrides, employeeId, date) {
-  const iso3 = toISODate(date);
+  const iso4 = toISODate(date);
   const wd = (date.getDay() + 6) % 7;
-  const key2 = `${employeeId}|${iso3}`;
+  const key2 = `${employeeId}|${iso4}`;
   if (overrides[key2]) return overrides[key2];
   const p = parityOf(isoWeek(date));
   const t = templates[employeeId]?.[p]?.[wd];
@@ -5683,16 +5831,37 @@ function leaveDates(req) {
 function requestDates(req) {
   return req.type === "leave" || req.type === "sick" ? leaveDates(req) : [...new Set(req.dates || [])];
 }
+var RECOVERY_OTHER = "recovery_other";
+var isDatedAbsence = (type) => type === "recovery" || type === RECOVERY_OTHER;
+var RECOVERY_KNOWN_KEY = "recoveryKnown";
+function balanceKnownMap(db) {
+  try {
+    return JSON.parse(db.settings?.[RECOVERY_KNOWN_KEY] || "{}");
+  } catch {
+    return {};
+  }
+}
+var isBalanceKnown = (db, emp) => balanceKnownMap(db)[emp] === true;
+function markBalanceKnown(db, emp) {
+  db.settings ??= {};
+  const map = balanceKnownMap(db);
+  if (map[emp] === true) return;
+  map[emp] = true;
+  db.settings[RECOVERY_KNOWN_KEY] = JSON.stringify(map);
+}
 function recoveryPlannedMinutes(req, templates, overrides) {
   let total = 0;
-  for (const iso3 of requestDates(req)) {
-    const d = parseISO(iso3);
+  for (const iso4 of requestDates(req)) {
+    const d = parseISO(iso4);
     total += plannedMinutes(getDayPlan(templates, overrides, req.employeeId, d));
   }
   return total;
 }
-function checkRecoveryValidation(req, templates, overrides, balanceMin) {
+function checkRecoveryValidation(req, templates, overrides, balanceMin, balanceKnown = true) {
   const need = recoveryPlannedMinutes(req, templates, overrides);
+  if (!balanceKnown) {
+    return { ok: false, deductMinutes: 0, reason: "Solde de recuperation a renseigner : la validation est suspendue tant que la gerante n'a pas enregistre le solde de ce salarie." };
+  }
   if (need > balanceMin) {
     return { ok: false, deductMinutes: 0, reason: "Solde insuffisant : la validation est bloquee tant que le solde ne couvre pas les heures prevues, pour ne perdre aucune heure." };
   }
@@ -5700,16 +5869,16 @@ function checkRecoveryValidation(req, templates, overrides, balanceMin) {
 }
 
 // server/db-pg.js
-var iso2 = (v) => v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+var iso3 = (v) => v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}` : String(v).slice(0, 10);
 var hm = (v) => v == null ? null : String(v).slice(0, 5);
 var dayRow = (r) => ({ worked: r.worked, start: hm(r.start_time), end: hm(r.end_time), pauseStart: hm(r.pause_start), pauseEnd: hm(r.pause_end), open: r.is_open, close: r.is_close });
 var reqFromRow = (r) => ({
   id: String(r.id),
   employeeId: r.employee_id,
   type: r.type,
-  ...r.date_start ? { dateStart: iso2(r.date_start) } : {},
-  ...r.date_end ? { dateEnd: iso2(r.date_end) } : {},
-  ...r.dates ? { dates: r.dates.map(iso2) } : {},
+  ...r.date_start ? { dateStart: iso3(r.date_start) } : {},
+  ...r.date_end ? { dateEnd: iso3(r.date_end) } : {},
+  ...r.dates ? { dates: r.dates.map(iso3) } : {},
   details: r.details || {},
   status: r.status,
   createdAt: r.created_at,
@@ -5717,10 +5886,11 @@ var reqFromRow = (r) => ({
   ...r.decided_at ? { decidedAt: r.decided_at } : {}
 });
 var ledgerFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaMin: l.delta_min, reason: l.reason, at: l.at, requestId: l.request_ref });
+var specialFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaDays: l.delta_days, reason: l.reason, day: l.day ? iso3(l.day) : null, requestId: l.request_ref, at: l.at });
 async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, applySchema = true, schemaName = "public" } = {}) {
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName)) throw Error("Invalid schema name");
   const connection = client;
-  client = { query: (sql, args) => connection.query(sql.replace(/(?<![\w.])(employees|templates|plan_overrides|requests|recovery_ledger|blocks|settings|outbox)\b/g, schemaName + ".$1"), args), end: () => connection.end() };
+  client = { query: (sql, args) => connection.query(sql.replace(/(?<![\w.])(employees|templates|plan_overrides|requests|recovery_ledger|special_day_ledger|blocks|settings|outbox)\b/g, schemaName + ".$1"), args), end: () => connection.end() };
   const q = async (text, values) => (await client.query(text, values)).rows;
   if (applySchema) await client.query(schemaSql ?? readFileSync(fileURLToPath(new URL("../schema.sql", import.meta.url)), "utf8"));
   if (seedIfEmpty && (await q("SELECT COUNT(*)::int AS n FROM employees"))[0].n === 0) {
@@ -5743,6 +5913,8 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
       );
     for (const l of s.recoveryLedger)
       await client.query("INSERT INTO recovery_ledger (employee_id,delta_min,reason,at) VALUES ($1,$2,$3,$4)", [l.employeeId, l.deltaMin, l.reason, l.at]);
+    for (const [key2, value] of Object.entries(s.settings || {}))
+      await client.query("INSERT INTO settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING", [key2, String(value)]);
   }
   const templatesOf = async (empId) => {
     const out = { paire: Array.from({ length: 7 }, () => ({ worked: false })), impaire: Array.from({ length: 7 }, () => ({ worked: false })) };
@@ -5756,13 +5928,14 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
       const templates = {};
       for (const e of employees) templates[e.id] = await templatesOf(e.id);
       const overrides = {};
-      for (const r of await q("SELECT * FROM plan_overrides")) overrides[`${r.employee_id}|${iso2(r.day)}`] = dayRow(r);
+      for (const r of await q("SELECT * FROM plan_overrides")) overrides[`${r.employee_id}|${iso3(r.day)}`] = dayRow(r);
       const requests = (await q("SELECT * FROM requests ORDER BY created_at")).map(reqFromRow);
       const recoveryLedger = (await q("SELECT * FROM recovery_ledger ORDER BY at")).map(ledgerFromRow);
+      const specialDayLedger = (await q("SELECT * FROM special_day_ledger ORDER BY at")).map(specialFromRow);
       const blocks = (await q("SELECT * FROM blocks ORDER BY start_date")).map((b) => ({ id: b.id, label: b.label, start: b.start_date, end: b.end_date }));
       const settings = Object.fromEntries((await q("SELECT * FROM settings")).map((r) => [r.key, r.value]));
       const outbox = await q("SELECT * FROM outbox ORDER BY created DESC LIMIT 100");
-      return { employees, templates, overrides, requests, recoveryLedger, blocks, settings, outbox };
+      return { employees, templates, overrides, requests, recoveryLedger, specialDayLedger, blocks, settings, outbox };
     },
     // --- mutations métier ---
     async putTemplate(empId, tpl) {
@@ -5830,7 +6003,8 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
         }
         let deduct2 = 0;
         if (r.type === "recovery") {
-          const chk = checkRecoveryValidation(r, { [r.employeeId]: await templatesOf(r.employeeId) }, await overridesOf(r.employeeId), await balanceOf(r.employeeId));
+          const settings = Object.fromEntries((await q("SELECT * FROM settings")).map((row2) => [row2.key, row2.value]));
+          const chk = checkRecoveryValidation(r, { [r.employeeId]: await templatesOf(r.employeeId) }, await overridesOf(r.employeeId), await balanceOf(r.employeeId), isBalanceKnown({ settings }, r.employeeId));
           if (!chk.ok) {
             await client.query("ROLLBACK");
             return [409, { error: chk.reason }];
@@ -5890,13 +6064,108 @@ async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, app
   return store2;
   async function overridesOf(empId) {
     const out = {};
-    for (const r of await q("SELECT * FROM plan_overrides WHERE employee_id=$1", [empId])) out[`${empId}|${iso2(r.day)}`] = dayRow(r);
+    for (const r of await q("SELECT * FROM plan_overrides WHERE employee_id=$1", [empId])) out[`${empId}|${iso3(r.day)}`] = dayRow(r);
     return out;
   }
 }
 
+// src/domain/dutyReplacements.js
+function dutyBackups(data) {
+  try {
+    return JSON.parse(data.settings?.dutyBackups || "{}");
+  } catch {
+    return {};
+  }
+}
+var absenceOn = (r, day) => isDatedAbsence(r.type) ? (r.dates || []).includes(day) : r.dateStart <= day && r.dateEnd >= day;
+var requestDayList = (r) => isDatedAbsence(r.type) ? [...new Set(r.dates || [])].sort() : Array.from({ length: Math.max(0, Math.min(370, Math.round((parseISO(r.dateEnd) - parseISO(r.dateStart)) / 864e5) + 1)) }, (_, i) => {
+  const d = parseISO(r.dateStart);
+  d.setDate(d.getDate() + i);
+  return toISODate(d);
+});
+function replacementProposal(data, request) {
+  const backups = dutyBackups(data), absences = approvedAbsences(data), rows = [];
+  for (const day of requestDayList(request)) {
+    if (beforeEmployment(data, request.employeeId, day) || isClosedHoliday(data, day) || schoolOn(data, request.employeeId, day)) continue;
+    const date = parseISO(day), wd = (date.getDay() + 6) % 7;
+    const plan = getDayPlan(data.templates, data.overrides, request.employeeId, date);
+    if (!plan.worked) continue;
+    const parity = parityOf(isoWeek(date));
+    for (const role of ["open", "close"]) if (plan[role] || effectiveDutyAssignments(data, request.employeeId, day).some((x) => x.role === role)) {
+      const candidates = (data.employees || []).filter((e) => e.id !== request.employeeId && backups[e.id]?.[parity]?.[wd]?.[role]).map((e) => {
+        const p = getDayPlan(data.templates, data.overrides, e.id, date), assigned = effectiveDutyAssignments(data, e.id, day).some((x) => x.role === role);
+        const reason = beforeEmployment(data, e.id, day) ? "Avant l'arriv\xE9e" : schoolOn(data, e.id, day) ? "\xC9cole ce jour" : e.active === false ? "Salari\xE9 inactif" : absences.some((r) => r.employeeId === e.id && absenceOn(r, day)) ? "Absent ce jour" : !p.worked ? "Repos ce jour" : p[role] || assigned ? "D\xE9j\xE0 affect\xE9 \xE0 ce r\xF4le" : "";
+        return { employeeId: e.id, name: e.name, available: !reason, reason };
+      });
+      rows.push({ day, role, candidates });
+    }
+  }
+  return { requestId: String(request.id), rows, version: JSON.stringify({ employeeId: request.employeeId, dates: requestDayList(request), rows }) };
+}
+function validateReplacementChoices(data, request, review) {
+  const proposal = replacementProposal(data, request);
+  if (!proposal.rows.length || !review && data.settings?.dutyBackups === void 0) return [];
+  if (!review || review.version !== proposal.version || !Array.isArray(review.choices)) throw Error("V\xE9rifiez les rempla\xE7ants et actualisez les disponibilit\xE9s avant de valider.");
+  const seen = /* @__PURE__ */ new Set(), counts = /* @__PURE__ */ new Map();
+  return review.choices.map((x) => {
+    const row = proposal.rows.find((r) => r.day === x.day && r.role === x.role), candidate = row?.candidates.find((c) => c.employeeId === x.employeeId && c.available), key2 = x.day + "|" + x.role + "|" + x.employeeId, k = x.day + "|" + x.role;
+    if (!candidate || seen.has(key2) || (counts.get(k) || 0) >= 2) throw Error("Choix de rempla\xE7ants invalide ou disponibilit\xE9 modifi\xE9e.");
+    seen.add(key2);
+    counts.set(k, (counts.get(k) || 0) + 1);
+    return { day: x.day, role: x.role, employeeId: x.employeeId };
+  });
+}
+
 // server/restored.js
 import { randomUUID } from "node:crypto";
+
+// src/domain/specialDays.js
+var SPECIAL_KNOWN_KEY = "specialKnown";
+var specialKnownMap = (db) => {
+  try {
+    return JSON.parse(db.settings?.[SPECIAL_KNOWN_KEY] || "{}");
+  } catch {
+    return {};
+  }
+};
+var isSpecialKnown = (db, emp) => specialKnownMap(db)[emp] === true;
+function markSpecialKnown(db, emp) {
+  db.settings ??= {};
+  const map = specialKnownMap(db);
+  if (map[emp]) return;
+  map[emp] = true;
+  db.settings[SPECIAL_KNOWN_KEY] = JSON.stringify(map);
+}
+function creditableDays(db) {
+  const years = Object.keys(holidayCalendar(db).years || {}), closed = new Set(closedHolidayDates(db));
+  const holidays = years.flatMap((y) => frenchHolidays(Number(y))).filter((h) => h.date.slice(5, 10) !== "05-01" && !closed.has(h.date)).map((h) => ({ day: h.date, reason: "F\xE9ri\xE9 travaill\xE9 \xB7 " + h.name }));
+  return [...holidays, ...getOpenSundays(db).map((day) => ({ day, reason: "Dimanche travaill\xE9" }))].sort((a, b) => a.day.localeCompare(b.day));
+}
+function worksForCredit(db, emp, day) {
+  const e = (db.employees || []).find((x) => x.id === emp);
+  if (!e || e.active === false) return false;
+  if (beforeEmployment(db, emp, day) || schoolOn(db, emp, day)) return false;
+  const plan = getDayPlan(db.templates || {}, db.overrides || {}, emp, parseISO(day));
+  if (plannedMinutes(plan) <= 0) return false;
+  if (activeSickLeaves(db).some((r) => r.employeeId === emp && sickCovers(r, day))) return false;
+  return !(db.requests || []).some((r) => r.employeeId === emp && r.status === "approved" && (r.dates ? r.dates.includes(day) : r.dateStart <= day && day <= r.dateEnd));
+}
+function specialDayCredits(db) {
+  const out = [];
+  for (const e of (db.employees || []).filter((e2) => e2.active !== false))
+    for (const { day, reason } of creditableDays(db))
+      if (worksForCredit(db, e.id, day)) out.push({ employeeId: e.id, day, reason, deltaDays: 1 });
+  return out;
+}
+var specialMovements = (db, emp) => (db.specialDayLedger || []).filter((l) => l.employeeId === emp);
+var specialBalance = (db, emp) => specialMovements(db, emp).reduce((s, l) => s + Number(l.deltaDays), 0) + specialDayCredits(db).filter((c) => c.employeeId === emp).length;
+function checkSpecialDebit(db, emp, days) {
+  if (!isSpecialKnown(db, emp)) return { ok: false, debitDays: 0, reason: "Compteur f\xE9ri\xE9/dimanche \xE0 renseigner : la validation est suspendue tant que la g\xE9rante n\u2019a pas enregistr\xE9 le solde de ce salari\xE9 (onglet \xAB R\xE9cup\xE9ration \xBB)." };
+  const need = (days || []).length;
+  if (need <= 0) return { ok: false, debitDays: 0, reason: "Aucun jour pos\xE9 pour cette r\xE9cup\xE9ration." };
+  if (need > specialBalance(db, emp)) return { ok: false, debitDays: 0, reason: "Le compteur f\xE9ri\xE9/dimanche de ce salari\xE9 ne couvre pas les jours pos\xE9s." };
+  return { ok: true, debitDays: need };
+}
 
 // src/domain/defaults.js
 var STAFF_COLORS = ["#166534", "#9d174d", "#6d28d9", "#b45309", "#0f766e", "#be123c", "#3f6212", "#9a3412", "#475569", "#854d0e", "#7e22ce", "#115e59"];
@@ -5905,33 +6174,24 @@ function defaultWorkTemplates() {
   return { paire: week(), impaire: week() };
 }
 
-// src/domain/sundays.js
-var isSunday = (date) => validDate(date) && (/* @__PURE__ */ new Date(date + "T12:00:00Z")).getUTCDay() === 0;
-function getOpenSundays(data) {
-  let dates2 = data?.openSundays;
-  if (!Array.isArray(dates2)) try {
-    dates2 = JSON.parse(data?.settings?.sundayOpenings || "[]");
-  } catch {
-    dates2 = [];
-  }
-  return Array.isArray(dates2) ? [...new Set(dates2.filter(isSunday))].sort() : [];
-}
-function sundaySnapshot(data, date) {
-  return { open: getOpenSundays(data).includes(date), employees: data.employees.filter((e) => e.active !== false).map((e) => e.id).sort(), plans: Object.fromEntries(Object.entries(data.overrides || {}).filter(([key2]) => key2.endsWith("|" + date)).sort(([a], [b]) => a.localeCompare(b))) };
-}
-
 // server/restored.js
 var id = () => randomUUID();
 var details = (r) => r.details || {};
-var dates = (r, openSundays = []) => r.type === "recovery" ? [...new Set(r.dates || [])] : r.dateStart === r.dateEnd && validDate(r.dateStart) && (/* @__PURE__ */ new Date(r.dateStart + "T12:00:00Z")).getUTCDay() === 0 && !openSundays.includes(r.dateStart) ? [] : workdays(r.dateStart, r.dateEnd, openSundays);
+var baseDates = (r, openSundays = []) => isDatedAbsence(r.type) ? [...new Set(r.dates || [])] : r.dateStart === r.dateEnd && validDate(r.dateStart) && (/* @__PURE__ */ new Date(r.dateStart + "T12:00:00Z")).getUTCDay() === 0 && !openSundays.includes(r.dateStart) ? [] : workdays(r.dateStart, r.dateEnd, openSundays);
+var dates = (r, openSundays = [], db = {}) => holidayRequestDays(db, r, baseDates(r, openSundays));
 var balance = (db, emp) => db.recoveryLedger.filter((l) => l.employeeId === emp).reduce((s, l) => s + Number(l.deltaMin), 0);
-function toV1(r, openSundays = []) {
-  const ds = dates(r, openSundays);
+var blockedDaysOf = (db, days) => {
+  const blocks = db.settings?.blocksConfigured === "true" || db.blocks?.length ? db.blocks : defaultBlocks;
+  return (days || []).filter((d) => blockedReason(d, blocks, db.settings?.firstWeek !== "false", getOpenSundays(db)));
+};
+function toV1(r, openSundays = [], db = {}) {
+  const ds = dates(r, openSundays, db);
   return { id: r.id, employee_id: r.employeeId, leave_type: r.type, start: r.dateStart || ds[0], end: r.dateEnd || ds.at(-1), days: JSON.stringify(ds), status: r.status === "rejected" ? "refused" : r.status, created: r.createdAt, ...details(r) };
 }
 function planningData(db, admin, actor) {
-  return { openSundays: getOpenSundays(db), employees: db.employees.map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color, active: e.active === false ? 0 : 1 })), requests: [...db.requests.map((r) => {
-    const x = toV1(r, getOpenSundays(db));
+  return { specialKnown: specialKnownMap(db), specialDayLedger: db.specialDayLedger || [], specialDayCredits: specialDayCredits(db), recoveryKnown: balanceKnownMap(db), employmentStarts: employmentStarts(db), schoolPeriods: schoolPeriods(db), holidayYears: Object.fromEntries(Object.entries(holidayCalendar(db).years || {}).map(([year, entry]) => [year, { effectiveFrom: entry.effectiveFrom }])), closedHolidays: closedHolidayDates(db), openSundays: getOpenSundays(db), employees: db.employees.map((e) => ({ id: e.id, name: e.name, role: e.role, color: e.color, active: e.active === false ? 0 : 1 })), requests: [...db.requests.map((r) => {
+    const x = toV1(r, getOpenSundays(db), db);
+    x.blocked = blockedDaysOf(db, dates(r, getOpenSundays(db), db)).length ? 1 : 0;
     if (!admin && actor !== r.employeeId) {
       delete x.note;
       delete x.answer;
@@ -5947,43 +6207,60 @@ function queued(db, r, body) {
   }
 }
 function checkDates(db, start, end, allowPast = false) {
-  const days = workdays(start, end, getOpenSundays(db));
+  const days = workdays(start, end, getOpenSundays(db)).filter((day) => !isClosedHoliday(db, day));
+  if (!days.length) throw Error("La p\xE9riode ne contient aucun jour ouvert (jour f\xE9ri\xE9 ou dimanche ferm\xE9).");
   if (!allowPast && start < today()) throw Error("Choisissez une date \xE0 partir d\u2019aujourd\u2019hui.");
   const blocks = db.settings?.blocksConfigured === "true" || db.blocks?.length ? db.blocks : defaultBlocks;
-  const bad = days.find((d) => blockedReason(d, blocks, db.settings?.firstWeek !== "false", getOpenSundays(db)));
-  if (bad) throw Error(`${bad} : ${blockedReason(bad, blocks, db.settings?.firstWeek !== "false", getOpenSundays(db))}. Choisissez une autre p\xE9riode.`);
   return days;
 }
 function checkCapacity(db, r) {
-  const ds = dates(r, getOpenSundays(db));
+  const ds = dates(r, getOpenSundays(db), db);
   if (hasSickConflict(db, r.employeeId, ds)) throw Error("Un arr\xEAt de travail est enregistr\xE9 pour ce salari\xE9 sur ces dates.");
   for (const day of ds) {
-    const others = db.requests.filter((q) => q.id !== r.id && q.status === "approved" && dates(q, getOpenSundays(db)).includes(day));
+    const others = db.requests.filter((q) => q.id !== r.id && q.status === "approved" && dates(q, getOpenSundays(db), db).includes(day));
     if (others.some((q) => q.employeeId === r.employeeId)) throw Error("Ce salari\xE9 a d\xE9j\xE0 une absence valid\xE9e sur cette p\xE9riode.");
     if (others.length >= (details(r).override ? 2 : 1)) throw Error(details(r).override ? "Deux personnes sont d\xE9j\xE0 absentes sur cette p\xE9riode." : "Une personne est d\xE9j\xE0 absente sur cette p\xE9riode. Une d\xE9rogation est n\xE9cessaire.");
   }
 }
 function deduct(db, r) {
+  if (r.type === RECOVERY_OTHER) {
+    const chk = checkSpecialDebit(db, r.employeeId, (r.dates || []).filter((day) => !isClosedHoliday(db, day)));
+    if (!chk.ok) throw Error(chk.reason);
+    r.details ??= {};
+    r.details.deductedDays = chk.debitDays;
+    (db.specialDayLedger ??= []).push({ id: id(), employeeId: r.employeeId, deltaDays: -chk.debitDays, reason: "Autre r\xE9cup\xE9ration valid\xE9e", day: (r.dates || [])[0] || null, requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+    return;
+  }
   if (r.type !== "recovery") return;
-  const need = recoveryPlannedMinutes(r, db.templates, db.overrides);
+  if (!isBalanceKnown(db, r.employeeId)) throw Error("Le solde de r\xE9cup\xE9ration de ce salari\xE9 est \xE0 renseigner : la validation est suspendue tant que le solde n\u2019est pas enregistr\xE9 dans l\u2019onglet \xAB R\xE9cup\xE9ration \xBB.");
+  const need = recoveryPlannedMinutes({ ...r, dates: (r.dates || []).filter((day) => !isClosedHoliday(db, day)) }, db.templates, db.overrides);
   if (need <= 0) throw Error("Aucune heure n\u2019est pr\xE9vue pour cette r\xE9cup\xE9ration. Renseignez d\u2019abord le planning.");
   if (need > balance(db, r.employeeId)) throw Error("Le solde de r\xE9cup\xE9ration ne couvre pas les heures pr\xE9vues.");
   r.deductedMin = need;
   db.recoveryLedger.push({ id: id(), employeeId: r.employeeId, deltaMin: -need, reason: "R\xE9cup\xE9ration valid\xE9e", requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
 }
 function refund(db, r) {
+  if (r.status === "approved" && r.type === RECOVERY_OTHER && (r.details?.deductedDays || 0) > 0) {
+    const imported = r.details?.importedSpecial === 1;
+    if (!imported) (db.specialDayLedger ??= []).push({ id: id(), employeeId: r.employeeId, deltaDays: r.details.deductedDays, reason: "Autre r\xE9cup\xE9ration recr\xE9dit\xE9e apr\xE8s correction ou suppression", requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+    r.details.deductedDays = 0;
+    if (imported) delete r.details.importedSpecial;
+  }
   if (r.status === "approved" && r.type === "recovery" && r.deductedMin > 0) {
-    db.recoveryLedger.push({ id: id(), employeeId: r.employeeId, deltaMin: r.deductedMin, reason: "R\xE9cup\xE9ration recr\xE9dit\xE9e apr\xE8s correction ou suppression", requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+    const imported = r.details?.importedRecovery === 1;
+    if (!imported) db.recoveryLedger.push({ id: id(), employeeId: r.employeeId, deltaMin: r.deductedMin, reason: "R\xE9cup\xE9ration recr\xE9dit\xE9e apr\xE8s correction ou suppression", requestId: r.id, at: (/* @__PURE__ */ new Date()).toISOString() });
     r.deductedMin = 0;
+    if (imported) delete r.details.importedRecovery;
   }
 }
 function absence(r, start, end, type, openSundays = []) {
   r.type = type || r.type;
-  if (!["leave", "recovery"].includes(r.type)) throw Error("Type d\u2019absence invalide.");
-  if (r.type === "recovery") {
+  if (!["leave", "recovery", RECOVERY_OTHER].includes(r.type)) throw Error("Type d\u2019absence invalide.");
+  if (isDatedAbsence(r.type)) {
     r.dates = workdays(start, end, openSundays);
     delete r.dateStart;
     delete r.dateEnd;
+    if (r.type === RECOVERY_OTHER && (r.dates || []).length !== 1) throw Error("Une autre r\xE9cup\xE9ration f\xE9ri\xE9/dimanche se pose un jour \xE0 la fois.");
   } else {
     r.dateStart = start;
     r.dateEnd = end;
@@ -6013,6 +6290,17 @@ function changePlanning(db, p) {
     db.templates[employee.id] = defaultWorkTemplates();
     return;
   }
+  if (a === "employmentStart") {
+    requireAdmin();
+    if (!db.employees.some((e) => e.id === p.id)) throw Error("Salari\xE9 introuvable.");
+    if (p.start && !validDate(p.start)) throw Error("Date incorrecte.");
+    const dates2 = employmentStarts(db);
+    if ((dates2[p.id] || "") !== (p.original || "")) throw Error("Date modifi\xE9e. Actualisez.");
+    if (p.start) dates2[p.id] = p.start;
+    else delete dates2[p.id];
+    db.settings.employmentStarts = JSON.stringify(dates2);
+    return;
+  }
   if (a === "archive") {
     requireAdmin();
     const e = db.employees.find((e2) => e2.id === p.id);
@@ -6039,6 +6327,37 @@ function changePlanning(db, p) {
     db.settings.blocksConfigured = "true";
     return;
   }
+  if (a === "importApprovedLeave") {
+    requireAdmin();
+    const emp = String(p.target || "");
+    if (!db.employees.some((e) => e.id === emp && e.active !== false)) throw Error("S\xE9lectionnez un salari\xE9 actif.");
+    if (p.confirm !== true) throw Error("Confirmez que le cong\xE9 est d\xE9j\xE0 valid\xE9.");
+    const leaveType = p.leaveType || "leave";
+    if (!["leave", "recovery", RECOVERY_OTHER].includes(leaveType)) throw Error("Type d\u2019absence invalide.");
+    const ds = checkDates(db, p.start, p.end, true);
+    if (ds.some((day) => schoolOn(db, emp, day))) throw Error("Une p\xE9riode \xC9cole croise ces dates.");
+    const note = String(p.note || "").slice(0, 1500);
+    if (leaveType === "leave") {
+      if (db.requests.some((r4) => r4.employeeId === emp && r4.type === "leave" && r4.status === "approved" && r4.dateStart === p.start && r4.dateEnd === p.end)) return;
+      const r3 = { id: id(), employeeId: emp, type: "leave", status: "approved", dateStart: p.start, dateEnd: p.end, createdAt: (/* @__PURE__ */ new Date()).toISOString(), details: { note: note || "Cong\xE9 d\xE9j\xE0 valid\xE9 \xB7 import planning", override: p.override === true ? 1 : 0, source: "planning-import" } };
+      checkCapacity(db, r3);
+      db.requests.push(r3);
+      return;
+    }
+    if (db.requests.some((r3) => r3.employeeId === emp && r3.type === leaveType && r3.status === "approved" && JSON.stringify([...r3.dates || []].sort()) === JSON.stringify([...ds].sort()))) return;
+    const r2 = { id: id(), employeeId: emp, type: leaveType, status: "approved", dates: ds, createdAt: (/* @__PURE__ */ new Date()).toISOString(), details: { note: note || (leaveType === "recovery" ? "R\xE9cup\xE9ration d\xE9j\xE0 valid\xE9e \xB7 import sans nouveau d\xE9compte" : "Autre r\xE9cup\xE9ration d\xE9j\xE0 valid\xE9e \xB7 import planning"), override: p.override === true ? 1 : 0, source: "planning-import" } };
+    if (leaveType === RECOVERY_OTHER) {
+      r2.details.deductedDays = ds.length;
+      r2.details.importedSpecial = 1;
+    }
+    if (leaveType === "recovery") {
+      r2.deductedMin = recoveryPlannedMinutes(r2, db.templates, db.overrides);
+      r2.details.importedRecovery = 1;
+    }
+    checkCapacity(db, r2);
+    db.requests.push(r2);
+    return;
+  }
   if (a === "request") {
     const emp = admin ? String(p.target) : actor;
     if (!db.employees.some((e) => e.id === emp && e.active !== false)) throw Error("S\xE9lectionnez un salari\xE9 actif.");
@@ -6049,6 +6368,20 @@ function changePlanning(db, p) {
     db.requests.push(r2);
     return;
   }
+  if (a === "specialSetBalance") {
+    requireAdmin();
+    const employee = String(p.target || "");
+    if (!db.employees.some((e) => e.id === employee)) throw Error("Salari\xE9 introuvable.");
+    const current = specialBalance(db, employee), days = Number(p.days), known = isSpecialKnown(db, employee);
+    if (!Number.isInteger(days) || days < 0 || days > 366) throw Error("Indiquez un nombre de jours entier, positif ou nul.");
+    if (known) {
+      if (p.originalBalance !== current) throw Error("Le solde a chang\xE9 depuis son affichage. Rechargez cette ligne avant de l\u2019enregistrer.");
+    } else if (p.originalBalance !== null && p.originalBalance !== void 0) throw Error("Le compteur f\xE9ri\xE9/dimanche de ce salari\xE9 n\u2019\xE9tait pas encore renseign\xE9. Rechargez cette ligne avant de l\u2019enregistrer.");
+    const delta = days - current;
+    if (delta) (db.specialDayLedger ??= []).push({ id: id(), employeeId: employee, deltaDays: delta, reason: known ? "Correction du compteur f\xE9ri\xE9/dimanche" : "Compteur initial f\xE9ri\xE9/dimanche renseign\xE9", at: (/* @__PURE__ */ new Date()).toISOString() });
+    markSpecialKnown(db, employee);
+    return;
+  }
   if (a === "sendMail") {
     requireAdmin();
     return;
@@ -6057,11 +6390,14 @@ function changePlanning(db, p) {
     requireAdmin();
     const employee = String(p.target || "");
     if (!db.employees.some((e) => e.id === employee)) throw Error("Salari\xE9 introuvable.");
-    const current = balance(db, employee), minutes = Number(p.minutes);
+    const current = balance(db, employee), minutes = Number(p.minutes), known = isBalanceKnown(db, employee);
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 6e4) throw Error("Indiquez un solde positif ou nul, en heures et minutes.");
-    if (p.originalBalance !== current) throw Error("Le solde a chang\xE9 depuis son affichage. Rechargez cette ligne avant de l\u2019enregistrer.");
+    if (known) {
+      if (p.originalBalance !== current) throw Error("Le solde a chang\xE9 depuis son affichage. Rechargez cette ligne avant de l\u2019enregistrer.");
+    } else if (p.originalBalance !== null && p.originalBalance !== void 0) throw Error("Le solde de ce salari\xE9 n\u2019\xE9tait pas encore renseign\xE9. Rechargez cette ligne avant de l\u2019enregistrer.");
     const delta = minutes - current;
-    if (delta) db.recoveryLedger.push({ id: id(), employeeId: employee, deltaMin: delta, reason: "Correction du solde de r\xE9cup\xE9ration", at: (/* @__PURE__ */ new Date()).toISOString() });
+    if (delta) db.recoveryLedger.push({ id: id(), employeeId: employee, deltaMin: delta, reason: known ? "Correction du solde de r\xE9cup\xE9ration" : "Solde initial de r\xE9cup\xE9ration renseign\xE9", at: (/* @__PURE__ */ new Date()).toISOString() });
+    markBalanceKnown(db, employee);
     return;
   }
   if (["hoursAdd", "hoursEdit", "hoursDelete"].includes(a)) {
@@ -6090,11 +6426,14 @@ function changePlanning(db, p) {
     stale(r, p);
     if (a === "editApproved" && r.status !== "approved") throw Error("Ce cong\xE9 n\u2019est plus valid\xE9.");
     if (a === "editApproved") {
+      forgetHolidayProtection(db, r.id);
       checkDates(db, p.start, p.end, true);
       refund(db, r);
+      delete r.details.dutyReplacements;
       absence(r, p.start, p.end, p.leaveType, getOpenSundays(db));
       r.details = { ...r.details, override: p.override ? 1 : 0, answer: String(p.answer || "").slice(0, 1500), cancel_requested: 0 };
       checkCapacity(db, r);
+      r.details.dutyReplacements = validateReplacementChoices(db, r, p.replacementReview);
       deduct(db, r);
     } else {
       refund(db, r);
@@ -6107,11 +6446,14 @@ function changePlanning(db, p) {
     requireAdmin();
     if (r.status === "approved") return;
     if (r.status !== "pending") throw Error("Cette demande a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
-    const x = toV1(r, getOpenSundays(db));
+    forgetHolidayProtection(db, r.id);
+    const x = toV1(r, getOpenSundays(db), db);
     checkDates(db, x.start, x.end);
     r.details.override = p.override ? 1 : 0;
     checkCapacity(db, r);
+    const replacements = validateReplacementChoices(db, r, p.replacementReview);
     deduct(db, r);
+    r.details.dutyReplacements = replacements;
     r.status = "approved";
     r.details.answer = String(p.answer || "").slice(0, 1500);
   } else if (a === "refuse") {
@@ -6131,14 +6473,17 @@ function changePlanning(db, p) {
     r.details.proposed_start = p.start;
     r.details.proposed_end = p.end;
     r.details.answer = String(p.answer || "").slice(0, 1500);
+    r.details.proposedReplacementReview = { version: replacementProposal(db, q).version, choices: validateReplacementChoices(db, q, p.replacementReview) };
   } else if (a === "acceptProposal") {
     if (admin || r.status !== "proposed") throw Error("Le salari\xE9 doit accepter une proposition en cours.");
     checkDates(db, r.details.proposed_start, r.details.proposed_end);
     absence(r, r.details.proposed_start, r.details.proposed_end, void 0, getOpenSundays(db));
     r.details.override = 0;
     checkCapacity(db, r);
+    r.details.dutyReplacements = validateReplacementChoices(db, r, r.details.proposedReplacementReview);
     deduct(db, r);
     r.status = "approved";
+    delete r.details.proposedReplacementReview;
     r.details.proposed_start = null;
     r.details.proposed_end = null;
   } else if (a === "declineProposal") {
@@ -6160,13 +6505,25 @@ function changePlanning(db, p) {
   queued(db, r, `Aline a mis \xE0 jour votre demande d\u2019absence. Consultez Cong\xE9o pour voir la d\xE9cision ou les nouvelles dates.`);
 }
 async function restoredApi(store2, method, url, body) {
+  if (url.pathname === "/api/duty-replacements" && method === "GET") {
+    if (url.searchParams.get("admin") !== "1") return { code: 403, obj: { error: "R\xE9serv\xE9 \xE0 la g\xE9rante." } };
+    const db = structuredClone(await store2.getDoc()), r = db.requests.find((r2) => String(r2.id) === url.searchParams.get("request"));
+    if (!r) return { code: 404, obj: { error: "Demande introuvable." } };
+    const start = url.searchParams.get("start"), end = url.searchParams.get("end");
+    if (start && end) {
+      checkDates(db, start, end, true);
+      absence(r, start, end, url.searchParams.get("leaveType") || r.type, getOpenSundays(db));
+      delete r.details?.dutyReplacements;
+    }
+    return { code: 200, obj: replacementProposal(db, r) };
+  }
   let legacy = null;
   if (url.pathname === "/api/requests" && method === "POST") {
     const ds = body.type === "recovery" ? [...new Set(body.dates || [])].sort() : null;
     legacy = { action: "request", employee: body.employeeId, leaveType: body.type, start: body.dateStart || ds?.[0], end: body.dateEnd || ds?.at(-1) };
   }
   const route = url.pathname.match(/^\/api\/requests\/([\w-]+)\/(validate|reject)$/);
-  if (route && method === "POST") legacy = { admin: true, action: route[2] === "validate" ? "approve" : "refuse", id: route[1], override: body.override === true };
+  if (route && method === "POST") legacy = { admin: true, action: route[2] === "validate" ? "approve" : "refuse", id: route[1], override: body.override === true, replacementReview: body.replacementReview };
   if (url.pathname !== "/api/planning" && !legacy) return null;
   try {
     if (legacy) {
@@ -6223,15 +6580,6 @@ async function restoredApi(store2, method, url, body) {
   }
 }
 
-// src/domain/blocks.js
-function leaveBlockedReason(dayISO, blocks = [], firstWeek = true) {
-  const d = parseISO(dayISO);
-  if (d.getDay() === 0) return null;
-  if (firstWeek && isoWeek(d).week === 1) return "Semaine n\xB0 1 bloqu\xE9e";
-  const b = (blocks || []).find((x) => x.start <= dayISO && x.end >= dayISO);
-  return b ? b.label : null;
-}
-
 // server/sundays.js
 function applySundayOpening(db, payload, cleanDay2) {
   if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
@@ -6271,7 +6619,7 @@ function applyDutyAssignments(db, payload) {
   if (payload.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
   const { parity, changes } = payload;
   if (!["paire", "impaire"].includes(parity) || !Array.isArray(changes) || changes.length > db.employees.length * 6) throw Error("R\xE9partition des ouvertures et fermetures invalide.");
-  const seen = /* @__PURE__ */ new Set(), updates = [];
+  const seen = /* @__PURE__ */ new Set(), updates = [], backups = dutyBackups(db);
   for (const change of changes) {
     const employee = db.employees.find((e) => e.id === change?.employeeId && e.active !== false), weekday = change?.weekday;
     if (!employee || !Number.isInteger(weekday) || weekday < 0 || weekday > 5) throw Error("Choisissez un salari\xE9 actif et un jour du lundi au samedi.");
@@ -6282,12 +6630,29 @@ function applyDutyAssignments(db, payload) {
     const day = db.templates[employee.id]?.[parity]?.[weekday];
     if (!sameDutyState(dutyState(day), change.original)) throw Error(`La journ\xE9e de ${employee.name} a chang\xE9. Rechargez les affectations avant d\u2019enregistrer.`);
     if (!day || !day.worked && (change.open || change.close)) throw Error(`${employee.name} est en repos sur cette journ\xE9e. Modifiez d\u2019abord ses horaires dans Semaines types.`);
-    updates.push({ day, open: change.open, close: change.close });
+    if (change.backups !== void 0) {
+      for (const role of ["open", "close"]) {
+        if (typeof change.backups[role] !== "boolean" || typeof change.originalBackups?.[role] !== "boolean") throw Error("Rempla\xE7ants invalides.");
+        if (!!backups[employee.id]?.[parity]?.[weekday]?.[role] !== change.originalBackups[role]) throw Error("Les rempla\xE7ants ont chang\xE9. Rechargez avant d\u2019enregistrer.");
+      }
+    }
+    for (const role of ["open", "close"]) {
+      const backup = change.backups ? change.backups[role] : !!backups[employee.id]?.[parity]?.[weekday]?.[role];
+      if (change[role] && backup) throw Error(`${employee.name} ne peut pas \xEAtre titulaire et rempla\xE7ant de la m\xEAme fonction (${role === "open" ? "ouverture" : "fermeture"}) le m\xEAme jour. D\xE9cochez l\u2019une des deux cases.`);
+    }
+    updates.push({ day, employeeId: employee.id, weekday, open: change.open, close: change.close, backups: change.backups });
   }
   for (const update of updates) {
     update.day.open = update.open;
     update.day.close = update.close;
+    if (update.backups) {
+      backups[update.employeeId] ??= {};
+      backups[update.employeeId][parity] ??= {};
+      backups[update.employeeId][parity][update.weekday] = update.backups;
+    }
   }
+  db.settings ??= {};
+  if (updates.some((x) => x.backups)) db.settings.dutyBackups = JSON.stringify(backups);
   return updates.length;
 }
 
@@ -6380,13 +6745,21 @@ function cleanTemplate(t) {
 function bootstrapFor(db, empId) {
   return {
     employeeId: empId,
+    employmentStarts: { [empId]: employmentStarts(db)[empId] },
+    schoolPeriods: schoolPeriods(db).filter((p) => p.employeeId === empId),
+    closedHolidays: closedHolidayDates(db),
     openSundays: getOpenSundays(db),
     employees: db.employees.filter((e) => e.id === empId),
     templates: { [empId]: db.templates[empId] },
+    dutyAssignments: storedDutyAssignments(db).filter((x) => x.employeeId === empId).map(({ day, role, employeeId }) => ({ day, role, employeeId })),
     overrides: Object.fromEntries(Object.entries(db.overrides).filter(([k]) => k.startsWith(empId + "|"))),
     requests: db.requests.filter((r) => r.employeeId === empId),
     sickLeaves: activeSickLeaves(db).filter((r) => r.employeeId === empId),
-    recoveryLedger: db.recoveryLedger.filter((l) => l.employeeId === empId)
+    recoveryLedger: db.recoveryLedger.filter((l) => l.employeeId === empId),
+    recoveryKnown: balanceKnownMap(db),
+    specialKnown: specialKnownMap(db),
+    specialDayLedger: (db.specialDayLedger || []).filter((l) => l.employeeId === empId),
+    specialDayCredits: specialDayCredits(db).filter((c) => c.employeeId === empId)
   };
 }
 async function handleApi(store2, method, url, body) {
@@ -6394,6 +6767,18 @@ async function handleApi(store2, method, url, body) {
   if (restored) return restored;
   const p = url.pathname;
   let m;
+  if (p === "/api/school") {
+    if (method === "GET" && url.searchParams.get("admin") !== "1" || method === "PUT" && body?.admin !== true) return { code: 403, obj: { error: "Cette page est r\xE9serv\xE9e \xE0 la g\xE9rante." } };
+    try {
+      if (method === "PUT") await store2.transact((db2) => saveSchoolPeriod(db2, body));
+      if (method === "GET" || method === "PUT") {
+        const db2 = await store2.getDoc();
+        return { code: 200, obj: { employees: db2.employees.map((e) => ({ id: e.id, name: e.name, active: e.active !== false })), periods: schoolPeriods(db2) } };
+      }
+    } catch (e) {
+      return { code: 409, obj: { error: e.message } };
+    }
+  }
   if (p === "/api/sick-leaves") {
     if (method === "GET") {
       if (url.searchParams.get("admin") !== "1") return { code: 403, obj: { error: "Cette page est r\xE9serv\xE9e \xE0 la g\xE9rante." } };
@@ -6429,6 +6814,27 @@ async function handleApi(store2, method, url, body) {
       }
     }
   }
+  if (p === "/api/holidays") {
+    try {
+      if (method === "GET") {
+        const db2 = await store2.getDoc();
+        return { code: 200, obj: { calendar: holidayCalendar(db2), closedHolidays: closedHolidayDates(db2) } };
+      }
+      if (method === "POST") {
+        if (body.admin !== true) throw Error("Cette action est r\xE9serv\xE9e \xE0 la g\xE9rante.");
+        return { code: 200, obj: holidayPreview(await store2.getDoc(), body) };
+      }
+      if (method === "PUT") {
+        let result;
+        await store2.transact((db2) => {
+          result = saveHolidayCalendar(db2, body);
+        });
+        return { code: 200, obj: { ok: true, preview: result } };
+      }
+    } catch (e) {
+      return { code: 409, obj: { error: e.message || "Impossible de configurer les jours f\xE9ri\xE9s." } };
+    }
+  }
   if (p === "/api/sundays" && method === "PUT") {
     try {
       await store2.transact((db2) => {
@@ -6457,7 +6863,7 @@ async function handleApi(store2, method, url, body) {
   }
   if (p === "/api/bootstrap" && method === "GET") {
     const empId = url.searchParams.get("employee");
-    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db, openSundays: getOpenSundays(db), sickLeaves: activeSickLeaves(db) } };
+    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db, openSundays: getOpenSundays(db), sickLeaves: activeSickLeaves(db), specialKnown: specialKnownMap(db), specialDayCredits: specialDayCredits(db) } };
     if (empId && db.employees.some((e) => e.id === empId)) return { code: 200, obj: bootstrapFor(db, empId) };
     return { code: 400, obj: { error: "Param\xE8tre employee=<id> ou as=admin requis" } };
   }
@@ -6480,6 +6886,22 @@ async function handleApi(store2, method, url, body) {
           const original = cleanTemplate(body.original);
           if (!original || JSON.stringify(original) !== JSON.stringify(currentTemplate)) throw Error("Les horaires ou les affectations ont chang\xE9. Rechargez cette semaine type avant d\u2019enregistrer.");
         }
+        if (body.backups !== void 0) {
+          const all = dutyBackups(current), existing = all[m[1]] || {};
+          for (const parity of ["paire", "impaire"]) {
+            if (!Array.isArray(body.backups[parity]) || body.backups[parity].length !== 7 || !Array.isArray(body.originalBackups?.[parity]) || body.originalBackups[parity].length !== 7) throw Error("R\xF4les rempla\xE7ants invalides.");
+            for (let i = 0; i < 7; i++) for (const role of ["open", "close"]) {
+              if (typeof body.backups[parity][i]?.[role] !== "boolean" || typeof body.originalBackups[parity][i]?.[role] !== "boolean") throw Error("R\xF4les rempla\xE7ants invalides.");
+              if (!!existing[parity]?.[i]?.[role] !== body.originalBackups[parity][i][role]) throw Error("Les rempla\xE7ants ont chang\xE9. Rechargez cette semaine type avant d\u2019enregistrer.");
+              if (body.backups[parity][i][role] && !tpl[parity][i].worked) throw Error("Un rempla\xE7ant doit travailler ce jour-l\xE0.");
+            }
+          }
+          all[m[1]] = Object.fromEntries(["paire", "impaire"].map((parity) => [parity, Object.fromEntries(body.backups[parity].map((roles, i) => [i, roles]))]));
+          current.settings ??= {};
+          current.settings.dutyBackups = JSON.stringify(all);
+        }
+        const effectiveBackups = body.backups !== void 0 ? Object.fromEntries(["paire", "impaire"].map((parity) => [parity, Object.fromEntries(body.backups[parity].map((roles, i) => [i, roles]))])) : dutyBackups(current)[m[1]] || {};
+        for (const parity of ["paire", "impaire"]) for (let i = 0; i < 7; i++) for (const role of ["open", "close"]) if (tpl[parity][i][role] && effectiveBackups[parity]?.[i]?.[role]) throw Error("Ce salari\xE9 ne peut pas \xEAtre titulaire et rempla\xE7ant de la m\xEAme fonction le m\xEAme jour. D\xE9cochez l\u2019une des deux cases.");
         current.templates[m[1]] = tpl;
       });
       return { code: 200, obj: { template: tpl } };
@@ -6496,6 +6918,7 @@ async function handleApi(store2, method, url, body) {
       if (!d2) return { code: 400, obj: { error: "Journ\xE9e invalide" } };
       try {
         await store2.transact((current) => {
+          if (d2.worked && isClosedHoliday(current, day)) throw Error("Ce jour f\xE9ri\xE9 est ferm\xE9. Modifiez d\u2019abord le calendrier des jours f\xE9ri\xE9s.");
           if (d2.worked && parseISO(day).getDay() === 0 && !getOpenSundays(current).includes(day)) throw Error("Ce dimanche est ferm\xE9. Activez d\u2019abord son ouverture exceptionnelle.");
           current.overrides[empId + "|" + day] = d2;
         });
@@ -6530,14 +6953,21 @@ async function handleApi(store2, method, url, body) {
     if (body.type === "leave") {
       if (!ISODATE.test(body.dateStart || "") || !ISODATE.test(body.dateEnd || "")) return { code: 400, obj: { error: "dateStart/dateEnd requis" } };
       if (body.dateEnd < body.dateStart) return { code: 400, obj: { error: "Choisissez une p\xE9riode valide." } };
-      const firstWeek = (db.settings || {}).firstWeek !== "false";
-      const days = leaveDates({ dateStart: body.dateStart, dateEnd: body.dateEnd });
-      const bad = days.find((d) => leaveBlockedReason(d, db.blocks, firstWeek));
-      if (bad) return { code: 400, obj: { error: `${bad} : ${leaveBlockedReason(bad, db.blocks, firstWeek)}. Choisissez une autre p\xE9riode.` } };
-      r = { employeeId: empId, type: "leave", dateStart: body.dateStart, dateEnd: body.dateEnd };
+      r = {
+        employeeId: empId,
+        employmentStarts: { [empId]: employmentStarts(db)[empId] },
+        type: "leave",
+        dateStart: body.dateStart,
+        dateEnd: body.dateEnd
+      };
     } else if (body.type === "recovery") {
       if (!Array.isArray(body.dates) || body.dates.length === 0 || !body.dates.every((d) => ISODATE.test(d))) return { code: 400, obj: { error: "dates requises" } };
-      r = { employeeId: empId, type: "recovery", dates: body.dates.slice(0, 30) };
+      r = {
+        employeeId: empId,
+        employmentStarts: { [empId]: employmentStarts(db)[empId] },
+        type: "recovery",
+        dates: body.dates.slice(0, 30)
+      };
     } else return { code: 400, obj: { error: "type leave|recovery requis" } };
     r.id = "r" + Date.now();
     r.status = "pending";
@@ -6566,8 +6996,8 @@ async function handleApi(store2, method, url, body) {
     });
     db.requests.filter((r) => r.type === "leave" && r.status === "approved").forEach((r) => {
       const weeks = /* @__PURE__ */ new Set();
-      requestDates(r).forEach((iso3) => {
-        const w = isoWeek(parseISO(iso3));
+      holidayRequestDays(db, r, requestDates(r)).forEach((iso4) => {
+        const w = isoWeek(parseISO(iso4));
         if (w.year === year) weeks.add(w.week);
       });
       leavesByEmployee[r.employeeId] = [.../* @__PURE__ */ new Set([...leavesByEmployee[r.employeeId] || [], ...weeks])].sort((a, b) => a - b);
@@ -6624,19 +7054,26 @@ CREATE TABLE IF NOT EXISTS plan_overrides (
 
 -- Demandes : cong\xE9s (plage) ou r\xE9cup\xE9ration (jours ponctuels).
 -- Pas de d\xE9compte de jours de cong\xE9s (retir\xE9 le 25 oct 2026).
+-- type 'recovery_other' (19 nov 2026) : \xAB autre r\xE9cup\xE9ration / jour f\xE9ri\xE9 \xBB,
+-- jamais d\xE9compt\xE9e du compteur horaire.
+-- MIGRATION BASE EXISTANTE (\xE0 jouer au d\xE9ploiement, pas avant) :
+--   ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_type_check;
+--   ALTER TABLE requests ADD CONSTRAINT requests_type_check CHECK (type IN ('leave','recovery','recovery_other'));
+--   ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_check;
+--   ALTER TABLE requests ADD CONSTRAINT requests_check CHECK ((type='leave' AND date_start IS NOT NULL AND date_end IS NOT NULL) OR (type IN ('recovery','recovery_other') AND dates IS NOT NULL));
 CREATE TABLE IF NOT EXISTS requests (
   id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   employee_id   text NOT NULL REFERENCES employees(id),
-  type          text NOT NULL CHECK (type IN ('leave','recovery')),
+  type          text NOT NULL CHECK (type IN ('leave','recovery','recovery_other')),
   date_start    date,          -- leave : d\xE9but de plage incluse
   date_end      date,          -- leave : fin de plage incluse
-  dates         date[],        -- recovery : jours pos\xE9s
-  status        text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  dates         date[],        -- recovery / recovery_other : jours pos\xE9s
+  status        text NOT NULL DEFAULT 'pending' CONSTRAINT requests_status_check CHECK (status IN ('pending','approved','rejected')),
   deducted_min  integer,       -- recovery : heures d\xE9compt\xE9es \xE0 la validation
   created_at    timestamptz NOT NULL DEFAULT now(),
   decided_at    timestamptz,
   CHECK ((type = 'leave'    AND date_start IS NOT NULL AND date_end IS NOT NULL)
-      OR (type = 'recovery' AND dates IS NOT NULL))
+      OR (type IN ('recovery','recovery_other') AND dates IS NOT NULL))
 );
 
 -- Heures \xE0 r\xE9cup\xE9rer : saisies admin (positif) et d\xE9comptes \xE0 la validation (n\xE9gatif).
@@ -6651,6 +7088,23 @@ CREATE TABLE IF NOT EXISTS recovery_ledger (
 );
 CREATE INDEX IF NOT EXISTS recovery_ledger_employee_id_idx ON recovery_ledger (employee_id);
 CREATE INDEX IF NOT EXISTS requests_employee_id_status_idx ON requests (employee_id, status);
+
+-- Compteur \xAB autre r\xE9cup\xE9ration \xB7 f\xE9ri\xE9 / dimanche \xBB (19 nov 2026) : 1 jour
+-- cr\xE9dit\xE9 par f\xE9ri\xE9 ouvert ou dimanche ouvert travaill\xE9. Les CR\xC9DITS sont
+-- calcul\xE9s depuis le planning \xE0 la lecture (jamais stock\xE9s) ; cette table ne
+-- contient que les mouvements : solde initial/corrections de la g\xE9rante et
+-- d\xE9bits/recr\xE9dits li\xE9s aux demandes. Solde de d\xE9part \xAB \xE0 renseigner \xBB.
+-- MIGRATION BASE EXISTANTE : migrations/20261119-special-days.sql
+CREATE TABLE IF NOT EXISTS special_day_ledger (
+  id          text PRIMARY KEY,
+  employee_id text NOT NULL REFERENCES employees(id),
+  delta_days  integer NOT NULL,
+  reason      text,
+  day         date,
+  request_ref text,
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS special_day_ledger_employee_id_idx ON special_day_ledger (employee_id);
 
 -- P\xE9riodes o\xF9 les cong\xE9s sont interdits (reprise des r\xE8gles V1) + r\xE9glages.
 CREATE TABLE IF NOT EXISTS blocks (

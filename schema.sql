@@ -77,6 +77,23 @@ CREATE TABLE IF NOT EXISTS recovery_ledger (
 CREATE INDEX IF NOT EXISTS recovery_ledger_employee_id_idx ON recovery_ledger (employee_id);
 CREATE INDEX IF NOT EXISTS requests_employee_id_status_idx ON requests (employee_id, status);
 
+-- Compteur « autre récupération · férié / dimanche » (19 nov 2026) : 1 jour
+-- crédité par férié ouvert ou dimanche ouvert travaillé. Les CRÉDITS sont
+-- calculés depuis le planning à la lecture (jamais stockés) ; cette table ne
+-- contient que les mouvements : solde initial/corrections de la gérante et
+-- débits/recrédits liés aux demandes. Solde de départ « à renseigner ».
+-- MIGRATION BASE EXISTANTE : migrations/20261119-special-days.sql
+CREATE TABLE IF NOT EXISTS special_day_ledger (
+  id          text PRIMARY KEY,
+  employee_id text NOT NULL REFERENCES employees(id),
+  delta_days  integer NOT NULL,
+  reason      text,
+  day         date,
+  request_ref text,
+  at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS special_day_ledger_employee_id_idx ON special_day_ledger (employee_id);
+
 -- Périodes où les congés sont interdits (reprise des règles V1) + réglages.
 CREATE TABLE IF NOT EXISTS blocks (
   id text PRIMARY KEY,

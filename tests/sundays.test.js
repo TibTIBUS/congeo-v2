@@ -55,7 +55,7 @@ describe('exceptional Sunday opening dates',()=>{
   const view=planningData(db,false,'a');expect(JSON.parse(view.requests[0].days)).toEqual([DATE]);expect(requestCoversDay(view.requests[0],DATE,view.openSundays)).toBe(true);
   expect(()=>changePlanning(db,{...request,employee:'b'})).toThrow('dérogation');
   expect(effectiveWeekPlan(db,'a',2027,10)[6].worked).toBe(false);
-  db.blocks=[{label:'Noël',start:'2027-03-14',end:'2027-03-14'}];expect(()=>changePlanning(db,{...request,employee:'b'})).toThrow('Noël');
+  db.blocks=[{label:'Noël',start:'2027-03-14',end:'2027-03-16'}];changePlanning(db,{action:'request',employee:'b',start:'2027-03-16',end:'2027-03-16',leaveType:'leave'});expect(planningData(db,false,'b').requests.find(r=>r.employee_id==='b').blocked).toBe(1); // option B : dépôt possible pendant un bloc, demande signalée à la gérante
  });
  it('keeps recovery deductions consistent and prevents closing a Sunday with approved recovery',async()=>{
   const store=storeFor(fixture());await open(store);

@@ -46,7 +46,39 @@ describe('restored V1 leave workflows',()=>{
  });
  it('team, blocks, email preferences and shared statuses are restored',()=>{
   const d=fixture();changePlanning(d,{action:'employee',admin:true,name:'Nouveau salarié'});expect(d.employees).toHaveLength(4);
-  changePlanning(d,{action:'settings',admin:true,firstWeek:true,blocks:[{label:'Noël',start:'2027-12-18',end:'2028-01-02'}]});expect(()=>changePlanning(d,request('a','2027-12-20'))).toThrow('Noël');
+  changePlanning(d,{action:'settings',admin:true,firstWeek:true,blocks:[{label:'Noël',start:'2027-12-18',end:'2028-01-02'}]});changePlanning(d,request('a','2027-12-20'));expect(planningData(d,false,'a').requests.find(r=>r.employee_id==='a').blocked).toBe(1);
   changePlanning(d,{action:'profile',employee:'a',email:'a@example.test',notify:true});changePlanning(d,request('a'));changePlanning(d,{action:'approve',admin:true,id:d.requests[0].id});expect(d.outbox).toHaveLength(1);expect(planningData(d,false,'b').outbox).toHaveLength(0);
+ });
+});
+
+describe('compteur autre récupération · férié/dimanche',()=>{
+ const known=d=>{d.settings.specialKnown=JSON.stringify({a:true});return d;};
+ it('cycle complet : 1 jour posé, 1 jour décompté à la validation, recrédité à la suppression',()=>{
+  const d=fixture();changePlanning(d,{action:'specialSetBalance',admin:true,target:'a',days:1});expect(d.specialDayLedger.reduce((s,l)=>s+l.deltaDays,0)).toBe(1);
+  changePlanning(d,request('a','2027-06-01','recovery_other'));const r=d.requests[0];expect(r.dates).toEqual(['2027-06-01']);
+  changePlanning(d,{action:'approve',admin:true,id:r.id});expect(r.details.deductedDays).toBe(1);expect(d.specialDayLedger.at(-1).deltaDays).toBe(-1);expect(d.specialDayLedger.reduce((s,l)=>s+l.deltaDays,0)).toBe(0);
+  changePlanning(d,{action:'approve',admin:true,id:r.id});expect(d.specialDayLedger).toHaveLength(2); // validation rejouée : pas de second débit
+  changePlanning(d,{action:'deleteRequest',admin:true,id:r.id});expect(d.specialDayLedger.reduce((s,l)=>s+l.deltaDays,0)).toBe(1); // retour au solde initial
+ });
+ it('validation suspendue tant que le solde est « à renseigner »',()=>{
+  const d=fixture();changePlanning(d,request('a','2027-06-01','recovery_other'));
+  expect(()=>changePlanning(d,{action:'approve',admin:true,id:d.requests[0].id})).toThrow('à renseigner');expect(d.requests[0].status).toBe('pending');
+ });
+ it('validation bloquée si le solde ne couvre pas le jour posé',()=>{
+  const d=known(fixture());changePlanning(d,request('a','2027-06-01','recovery_other'));
+  expect(()=>changePlanning(d,{action:'approve',admin:true,id:d.requests[0].id})).toThrow('ne couvre pas');expect(d.specialDayLedger??[]).toHaveLength(0);
+ });
+ it('une autre récupération se pose un jour à la fois',()=>{
+  const d=known(fixture());expect(()=>changePlanning(d,{action:'request',employee:'a',start:'2027-06-01',end:'2027-06-02',leaveType:'recovery_other'})).toThrow('un jour à la fois');
+ });
+ it('import « déjà validée » : visible, aucun mouvement, pas de recrédit à la suppression',()=>{
+  const d=known(fixture());changePlanning(d,{action:'importApprovedLeave',admin:true,target:'a',confirm:true,leaveType:'recovery_other',start:'2027-06-01',end:'2027-06-01'});
+  const r=d.requests[0];expect(r.status).toBe('approved');expect(r.details.importedSpecial).toBe(1);expect(r.details.deductedDays).toBe(1);expect(d.specialDayLedger??[]).toHaveLength(0);
+  changePlanning(d,{action:'deleteRequest',admin:true,id:r.id});expect(d.specialDayLedger??[]).toHaveLength(0);
+ });
+ it('solde « à renseigner » : premier enregistrement puis correction protégée',()=>{
+  const d=fixture();changePlanning(d,{action:'specialSetBalance',admin:true,target:'a',days:3});expect(d.specialDayLedger[0]).toMatchObject({deltaDays:3,reason:'Compteur initial férié/dimanche renseigné'});
+  changePlanning(d,{action:'specialSetBalance',admin:true,target:'a',days:5,originalBalance:3});expect(d.specialDayLedger.reduce((s,l)=>s+l.deltaDays,0)).toBe(5);
+  expect(()=>changePlanning(d,{action:'specialSetBalance',admin:true,target:'a',days:9,originalBalance:4})).toThrow('a changé');
  });
 });

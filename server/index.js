@@ -19,8 +19,8 @@ import { openDb } from "./db.js";
 import { createPgStore } from "./db-pg.js";
 import { getWeekPlan } from "../src/domain/planning.js";
 import { isoWeek, isoWeeksInYear, parseISO } from "../src/domain/dates.js";
-import { requestDates, leaveDates, isBalanceKnown } from "../src/domain/requests.js";
-import { leaveBlockedReason } from "../src/domain/blocks.js";
+import { requestDates, isBalanceKnown, balanceKnownMap } from "../src/domain/requests.js";
+import { specialKnownMap, specialDayCredits } from '../src/domain/specialDays.js';
 import {getOpenSundays} from '../src/domain/sundays.js';
 import {applySundayOpening} from './sundays.js';
 import { applyDutyAssignments } from "../src/domain/duties.js";
@@ -64,6 +64,10 @@ function bootstrapFor(db, empId) {
     requests: db.requests.filter((r) => r.employeeId === empId),
     sickLeaves: activeSickLeaves(db).filter(r=>r.employeeId===empId),
     recoveryLedger: db.recoveryLedger.filter((l) => l.employeeId === empId),
+    recoveryKnown: balanceKnownMap(db),
+    specialKnown: specialKnownMap(db),
+    specialDayLedger: (db.specialDayLedger||[]).filter((l) => l.employeeId === empId),
+    specialDayCredits: specialDayCredits(db).filter((c) => c.employeeId === empId),
   };
 }
 
@@ -133,7 +137,7 @@ export async function handleApi(store, method, url, body) {
 
   if (p === "/api/bootstrap" && method === "GET") {
     const empId = url.searchParams.get("employee");
-    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db,openSundays:getOpenSundays(db),sickLeaves:activeSickLeaves(db) } };
+    if (url.searchParams.get("as") === "admin") return { code: 200, obj: { admin: true, ...db,openSundays:getOpenSundays(db),sickLeaves:activeSickLeaves(db),specialKnown:specialKnownMap(db),specialDayCredits:specialDayCredits(db) } };
     if (empId && db.employees.some((e) => e.id === empId)) return { code: 200, obj: bootstrapFor(db, empId) };
     return { code: 400, obj: { error: "Paramètre employee=<id> ou as=admin requis" } };
   }
@@ -219,11 +223,8 @@ export async function handleApi(store, method, url, body) {
     if (body.type === "leave") {
       if (!ISODATE.test(body.dateStart || "") || !ISODATE.test(body.dateEnd || "")) return { code: 400, obj: { error: "dateStart/dateEnd requis" } };
       if (body.dateEnd < body.dateStart) return { code: 400, obj: { error: "Choisissez une période valide." } };
-      // Périodes bloquées (mêmes règles que la V1 : semaine n° 1 + périodes nommées, dimanches ignorés)
-      const firstWeek = (db.settings || {}).firstWeek !== "false";
-      const days = leaveDates({ dateStart: body.dateStart, dateEnd: body.dateEnd });
-      const bad = days.find((d) => leaveBlockedReason(d, db.blocks, firstWeek));
-      if (bad) return { code: 400, obj: { error: `${bad} : ${leaveBlockedReason(bad, db.blocks, firstWeek)}. Choisissez une autre période.` } };
+      // Option B (19 nov 2026) : une période bloquée ne refuse plus le dépôt ;
+      // la demande est signalée « Période bloquée · décision de la gérante ».
       r = { employeeId: empId,
     employmentStarts:{[empId]:employmentStarts(db)[empId]}, type: "leave", dateStart: body.dateStart, dateEnd: body.dateEnd };
     } else if (body.type === "recovery") {

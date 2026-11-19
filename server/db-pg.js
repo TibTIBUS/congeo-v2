@@ -30,13 +30,14 @@ const reqFromRow = (r) => ({
   ...(r.decided_at ? { decidedAt: r.decided_at } : {}),
 });
 const ledgerFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaMin: l.delta_min, reason: l.reason, at: l.at, requestId:l.request_ref });
+const specialFromRow = (l) => ({ id: String(l.id), employeeId: l.employee_id, deltaDays: l.delta_days, reason: l.reason, day: l.day ? iso(l.day) : null, requestId: l.request_ref, at: l.at });
 
 // client : client pg déjà connecté (vrai pg ou pg-mem). seedIfEmpty : injecte
 // les données fictives si la base est vide (démo/test), à désactiver en réel.
 export async function createPgStore(client, { seedIfEmpty = true, schemaSql = null, applySchema = true, schemaName="public" } = {}) {
   if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw Error("Invalid schema name");
   const connection=client;
-  client={query:(sql,args)=>connection.query(sql.replace(/(?<![\w.])(employees|templates|plan_overrides|requests|recovery_ledger|blocks|settings|outbox)\b/g,schemaName+'.$1'),args),end:()=>connection.end()};
+  client={query:(sql,args)=>connection.query(sql.replace(/(?<![\w.])(employees|templates|plan_overrides|requests|recovery_ledger|special_day_ledger|blocks|settings|outbox)\b/g,schemaName+'.$1'),args),end:()=>connection.end()};
   const q = async (text, values) => (await client.query(text, values)).rows;
   // schemaSql : texte injecté au bundling (Neon Function, pas de fs) ; sinon lecture fichier.
   if (applySchema) await client.query(schemaSql ?? readFileSync(fileURLToPath(new URL("../schema.sql", import.meta.url)), "utf8"));
@@ -80,10 +81,11 @@ export async function createPgStore(client, { seedIfEmpty = true, schemaSql = nu
       for (const r of await q("SELECT * FROM plan_overrides")) overrides[`${r.employee_id}|${iso(r.day)}`] = dayRow(r);
       const requests = (await q("SELECT * FROM requests ORDER BY created_at")).map(reqFromRow);
       const recoveryLedger = (await q("SELECT * FROM recovery_ledger ORDER BY at")).map(ledgerFromRow);
+      const specialDayLedger = (await q("SELECT * FROM special_day_ledger ORDER BY at")).map(specialFromRow);
       const blocks = (await q("SELECT * FROM blocks ORDER BY start_date")).map((b) => ({ id: b.id, label: b.label, start: b.start_date, end: b.end_date }));
       const settings = Object.fromEntries((await q("SELECT * FROM settings")).map((r) => [r.key, r.value]));
       const outbox=await q("SELECT * FROM outbox ORDER BY created DESC LIMIT 100");
-      return { employees, templates, overrides, requests, recoveryLedger, blocks, settings,outbox };
+      return { employees, templates, overrides, requests, recoveryLedger, specialDayLedger, blocks, settings,outbox };
     },
 
 

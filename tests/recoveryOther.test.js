@@ -39,11 +39,14 @@ describe('solde de récupération « à renseigner »',()=>{
 });
 
 describe('autre récupération / jour férié (recovery_other)',()=>{
- it('se pose et se valide sans jamais débiter le compteur horaire, solde inconnu ou non',()=>{
+ it('se valide en débitant le compteur férié/dimanche, jamais le compteur horaire',()=>{
   const db=fixture(),r=addRecovery(db,'c','2027-06-07','2027-06-07','recovery_other');
   expect(r.type).toBe('recovery_other');expect(r.dates).toEqual(['2027-06-07']);
+  expect(()=>changePlanning(db,{admin:true,action:'approve',id:r.id})).toThrow('à renseigner'); // solde inconnu : validation suspendue
+  changePlanning(db,{admin:true,action:'specialSetBalance',target:'c',days:1,originalBalance:null});
   changePlanning(db,{admin:true,action:'approve',id:r.id});
   expect(r.status).toBe('approved');expect(r.deductedMin??0).toBe(0);expect(db.recoveryLedger).toHaveLength(0);
+  expect(db.specialDayLedger.reduce((s,l)=>s+l.deltaDays,0)).toBe(0); // +1 solde initial, -1 jour validé
  });
  it('rejette un type d’absence inconnu',()=>{
   const db=fixture();

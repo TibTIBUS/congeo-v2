@@ -1,8 +1,9 @@
 import SchoolPeriods from './SchoolPeriods';
 import {approvedAbsences} from '../domain/sickLeave';
 import React,{useCallback,useEffect,useState} from 'react';
-import {ChevronLeft,ChevronRight,Coffee,Timer,Utensils,CalendarOff} from 'lucide-react';
+import {ChevronLeft,ChevronRight,Coffee,Sun,Timer,Utensils,CalendarOff} from 'lucide-react';
 import OvertimeOverview from './OvertimeOverview';
+import SpecialOverview,{SpecialDetails} from './SpecialDays';
 import MonthlyOvertime from './MonthlyOvertime';
 import SickLeavePage from './SickLeavePage';
 import MonthlyDuties from './MonthlyDuties';
@@ -49,12 +50,21 @@ function MySchedule({data,actor}){
    <div className="schedule-timeline-entry">{working?<><div className="schedule-timeline-ranges">{ranges.map((range,index)=><React.Fragment key={range}>{index>0&&<span className="schedule-pause"><Utensils size={14} aria-hidden="true"/>Pause</span>}<span>{range}</span></React.Fragment>)}</div>{(p.open||p.close)&&<div className="schedule-duties">{p.open&&<span className={p.replacementOpen?'replacement-label':''}>{p.replacementOpen?'Remplacement ouverture':'Ouverture'}</span>}{p.close&&<span className={p.replacementClose?'replacement-label':''}>{p.replacementClose?'Remplacement fermeture':'Fermeture'}</span>}</div>}</>:<span className={'schedule-day-status'+(p.school?' school-chip':a?.type==='sick'?' sick-absence':'')}>{a?.type==='sick'?<CalendarOff size={18} aria-hidden="true"/>:<Coffee size={18} aria-hidden="true"/>}{p.beforeEmployment?"Avant l'arrivée":p.holidayClosed?'Férié · magasin fermé':p.school?'École':a?(a.type==='sick'?'Arrêt de travail':a.type==='recovery'?'Récupération':a.type==='recovery_other'?'Autre récupération':'Congé'):'Repos'}</span>}</div>
   </li>;
  })}</ol>
- <div className="schedule-recovery-summary"><Timer size={21} aria-hidden="true"/><h2>Solde de récupération</h2>{balKnown?<><strong>{format(bal)}</strong><span>disponibles</span></>:<><strong>À renseigner</strong><span>par la gérante</span></>}</div></div>;
+ <div className="schedule-recovery-summary"><Timer size={21} aria-hidden="true"/><h2>Solde de récupération</h2>{balKnown?<><strong>{format(bal)}</strong><span>disponibles</span></>:<><strong>À renseigner</strong><span>par la gérante</span></>}</div><SpecialSummary data={data} actor={actor}/></div>;
 }
 
 function Hours({data,write}){
- const [selected,setSelected]=useState(null);
- return <><OvertimeOverview data={data} write={write} onDetails={setSelected}/>{selected&&<HoursDetails key={selected} data={data} write={write} initialEmployee={selected} onClose={()=>setSelected(null)}/>}</>;
+ const [selected,setSelected]=useState(null),[selectedSpecial,setSelectedSpecial]=useState(null);
+ return <><OvertimeOverview data={data} write={write} onDetails={setSelected}/><SpecialOverview data={data} write={write} onDetails={setSelectedSpecial}/>{selected&&<HoursDetails key={selected} data={data} write={write} initialEmployee={selected} onClose={()=>setSelected(null)}/>}{selectedSpecial&&<SpecialDetails key={selectedSpecial} data={data} employeeId={selectedSpecial} onClose={()=>setSelectedSpecial(null)}/>}</>;
+}
+// Compteur « autre récupération · férié/dimanche » côté salarié : solde
+// (« à renseigner » tant que la gérante ne l'a pas saisi) + historique.
+function SpecialSummary({data,actor}){
+ const known=data.specialKnown?.[actor]===true;
+ const credits=(data.specialDayCredits||[]),moves=(data.specialDayLedger||[]);
+ const bal=credits.length+moves.reduce((s,l)=>s+Number(l.deltaDays),0);
+ const history=[...credits.map(c=>({id:'c'+c.day,day:c.day,reason:c.reason,deltaDays:1})),...moves.map(l=>({id:l.id,day:l.day||(l.at||'').slice(0,10),reason:l.reason,deltaDays:Number(l.deltaDays)}))].sort((a,b)=>(b.day||'').localeCompare(a.day||''));
+ return <section className="special-summary" aria-label="Récupération férié ou dimanche"><div className="schedule-recovery-summary"><Sun size={21} aria-hidden="true"/><h2>Récup férié / dimanche</h2>{known?<><strong>{bal} jour{bal>1?'s':''}</strong><span>disponible{bal>1?'s':''}</span></>:<><strong>À renseigner</strong><span>par la gérante</span></>}</div>{history.length>0&&<ol className="special-history">{history.slice(0,10).map(h=><li key={h.id} className={h.deltaDays>0?'special-plus':'special-minus'}><strong>{h.deltaDays>0?'+':'−'}{Math.abs(h.deltaDays)}</strong><span>{h.reason}</span><small>{h.day?new Date(h.day+'T12:00:00Z').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}):''}</small></li>)}</ol>}</section>;
 }
 function HoursDetails({data,write,initialEmployee,onClose}){
  const [emp,setEmp]=useState(initialEmployee),[h,setH]=useState(''),[m,setM]=useState('0'),[reason,setReason]=useState(''),[edit,setEdit]=useState(null),[remove,setRemove]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[ok,setOk]=useState('');

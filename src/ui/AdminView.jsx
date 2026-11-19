@@ -111,7 +111,7 @@ function Demandes({ data, actions }) {
     return <div className="card" style={{ padding: "11px 14px", marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontSize: 13.5 }}>
-          <b>{name(r.employeeId)}</b> · {r.type === "leave" ? "Congés" : "Récupération"} ·{" "}
+          <b>{name(r.employeeId)}</b> · {r.type === "leave" ? "Congés" : r.type === "recovery_other" ? "Autre récup · férié/dimanche" : "Récupération"} ·{" "}
           {r.type === "leave" ? `du ${fmtDateFr(r.dateStart)} au ${fmtDateFr(r.dateEnd)}` : r.dates.map(fmtDateFr).join(", ")}
           {r.type === "recovery" && r.status === "pending" && <span className="mut"> — {fmtHours(chk.deductMinutes)} prévues au planning seront décomptées (solde : {fmtHours(bal)})</span>}
           {r.type === "recovery" && r.status === "approved" && r.deductedMin > 0 && <span className="mut"> — {fmtHours(r.deductedMin)} décomptées</span>}
