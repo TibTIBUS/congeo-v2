@@ -23,6 +23,10 @@ export default function DutyAssignments({data,write,onReload}){
  const wk=isoWeek(new Date());let example=weekDates(wk.year,wk.week)[0];while(parityOf(isoWeek(example))!==parity)example=addDays(example,7);
  function toggle(employeeId,weekday,role,checked){
   const key=employeeId+'|'+weekday;
+  const d=visible(employeeId,weekday),effectiveBackups=d.backups??backup(employeeId,weekday);
+  const nextOpen=role==='open'?checked:d.open,nextClose=role==='close'?checked:d.close;
+  const nextBackupOpen=role==='backupOpen'?checked:effectiveBackups.open,nextBackupClose=role==='backupClose'?checked:effectiveBackups.close;
+  if((nextOpen&&nextBackupOpen)||(nextClose&&nextBackupClose)){setError('Un salarié ne peut pas être titulaire et remplaçant de la même fonction le même jour. Décochez d’abord l’autre case.');setMessage('');return;}
   setEdits(previous=>{
    const changed={...previous[parity]},originalEntry=changed[key]||{employeeId,weekday,original:current(employeeId,weekday),open:current(employeeId,weekday).open,close:current(employeeId,weekday).close};
    originalEntry.originalBackups??=backup(employeeId,weekday);originalEntry.backups??=backup(employeeId,weekday);

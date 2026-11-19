@@ -64,3 +64,42 @@ describe('recurring opening and closing assignments',()=>{
   expect((await store.getDoc()).templates[employee.id].paire[0]).toMatchObject({open:true,close:true,start:db.templates[employee.id].paire[0].start});
  });
 });
+
+describe('titulaire et remplaçant exclusifs pour une même fonction le même jour',()=>{
+ const withBackups=(db,id='a',weekday=0,backups={open:true,close:false},extra={})=>edit(db,id,weekday,{backups,originalBackups:{open:false,close:false},...extra});
+ it('rejects a batch making one employee both titulaire and remplaçant of the same role',()=>{
+  const db=fixture();
+  expect(()=>applyDutyAssignments(db,payload([withBackups(db)]))).toThrow('titulaire et remplaçant');
+  expect(db.templates.a.paire[0].open).toBe(false);
+  expect(()=>applyDutyAssignments(db,payload([withBackups(db,'a',0,{open:false,close:true},{close:true})]))).toThrow('titulaire et remplaçant');
+  expect(db.templates.a.paire[0].close).toBe(false);
+ });
+ it('rejects checking titulaire when the stored remplaçant flag already covers that role',()=>{
+  const db=fixture();db.settings.dutyBackups=JSON.stringify({a:{paire:{0:{open:true,close:false}}}});
+  expect(()=>applyDutyAssignments(db,payload([edit(db)]))).toThrow('titulaire et remplaçant');
+  expect(db.templates.a.paire[0].open).toBe(false);
+ });
+ it('still allows titulaire on one role and remplaçant on the other, or each alone',()=>{
+  const db=fixture();
+  applyDutyAssignments(db,payload([withBackups(db,'a',0,{open:false,close:true})]));
+  expect(db.templates.a.paire[0]).toMatchObject({open:true,close:false});
+  expect(JSON.parse(db.settings.dutyBackups).a.paire[0]).toEqual({open:false,close:true});
+  const db2=fixture();
+  applyDutyAssignments(db2,payload([withBackups(db2,'a',0,{open:false,close:false},{open:false})]));
+  expect(db2.templates.a.paire[0].open).toBe(false);
+  expect(JSON.parse(db2.settings.dutyBackups).a.paire[0]).toEqual({open:false,close:false});
+ });
+ it('rejects the same conflict through PUT /api/templates, against sent or stored remplaçants',async()=>{
+  const db=fixture(),path=join(mkdtempSync(join(tmpdir(),'congeo-duty-conflict-')),'db.json');writeFileSync(path,JSON.stringify(db));const store=openDb(path);
+  const zeros=()=>Array.from({length:7},()=>({open:false,close:false}));
+  const tpl=structuredClone(db.templates.a);tpl.paire[0]={...tpl.paire[0],open:true};
+  const backups={paire:zeros(),impaire:zeros()};backups.paire[0]={open:true,close:false};
+  const sent=await route(store,'/api/templates/a',{...tpl,original:db.templates.a,backups,originalBackups:{paire:zeros(),impaire:zeros()}});
+  expect(sent.code).toBe(409);expect(sent.obj.error).toContain('titulaire et remplaçant');
+  const stored=await store.getDoc();expect(stored.templates.a.paire[0].open).toBe(false);expect(stored.settings.dutyBackups).toBeUndefined();
+  stored.settings={dutyBackups:JSON.stringify({a:{paire:{0:{open:true,close:false}}}})};writeFileSync(path,JSON.stringify(stored));
+  const againstStored=await route(openDb(path),'/api/templates/a',{...tpl,original:stored.templates.a});
+  expect(againstStored.code).toBe(409);expect(againstStored.obj.error).toContain('titulaire et remplaçant');
+  expect((await openDb(path).getDoc()).templates.a.paire[0].open).toBe(false);
+ });
+});

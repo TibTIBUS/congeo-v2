@@ -17,6 +17,7 @@ export function applyDutyAssignments(db,payload){
   if(!sameDutyState(dutyState(day),change.original))throw Error(`La journée de ${employee.name} a changé. Rechargez les affectations avant d’enregistrer.`);
   if(!day||(!day.worked&&(change.open||change.close)))throw Error(`${employee.name} est en repos sur cette journée. Modifiez d’abord ses horaires dans Semaines types.`);
   if(change.backups!==undefined){for(const role of ['open','close']){if(typeof change.backups[role]!=='boolean'||typeof change.originalBackups?.[role]!=='boolean')throw Error('Remplaçants invalides.');if(!!backups[employee.id]?.[parity]?.[weekday]?.[role]!==change.originalBackups[role])throw Error('Les remplaçants ont changé. Rechargez avant d’enregistrer.');}}
+  for(const role of ['open','close']){const backup=change.backups?change.backups[role]:!!backups[employee.id]?.[parity]?.[weekday]?.[role];if(change[role]&&backup)throw Error(`${employee.name} ne peut pas être titulaire et remplaçant de la même fonction (${role==='open'?'ouverture':'fermeture'}) le même jour. Décochez l’une des deux cases.`);}
   updates.push({day,employeeId:employee.id,weekday,open:change.open,close:change.close,backups:change.backups});
  }
  for(const update of updates){update.day.open=update.open;update.day.close=update.close;if(update.backups){backups[update.employeeId]??={};backups[update.employeeId][parity]??={};backups[update.employeeId][parity][update.weekday]=update.backups;}}

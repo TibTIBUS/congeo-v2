@@ -173,6 +173,8 @@ export async function handleApi(store, method, url, body) {
           all[m[1]]=Object.fromEntries(['paire','impaire'].map(parity=>[parity,Object.fromEntries(body.backups[parity].map((roles,i)=>[i,roles]))]));
           current.settings??={};current.settings.dutyBackups=JSON.stringify(all);
         }
+        const effectiveBackups=body.backups!==undefined?Object.fromEntries(['paire','impaire'].map(parity=>[parity,Object.fromEntries(body.backups[parity].map((roles,i)=>[i,roles]))])):(dutyBackups(current)[m[1]]||{});
+        for(const parity of ['paire','impaire'])for(let i=0;i<7;i++)for(const role of ['open','close'])if(tpl[parity][i][role]&&effectiveBackups[parity]?.[i]?.[role])throw Error('Ce salarié ne peut pas être titulaire et remplaçant de la même fonction le même jour. Décochez l’une des deux cases.');
         current.templates[m[1]]=tpl;
       });
       return { code: 200, obj: { template: tpl } };
