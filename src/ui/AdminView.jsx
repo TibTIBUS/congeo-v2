@@ -73,9 +73,12 @@ function DayEditor({ data, actions, edit, onClose }) {
     <b>{emp.name} · {edit.iso}</b>
     <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 9, flexWrap: "wrap" }}>
       <label><input type="checkbox" checked={d.worked} onChange={(e) => set("worked", e.target.checked)} /> Travaillé</label>
-      <TimeField value={d.start || ""} onChange={(v) => set("start", v)} disabled={!d.worked} aria-label="Début" />
-      <TimeField value={d.end || ""} onChange={(v) => set("end", v)} disabled={!d.worked} aria-label="Fin" />
-      <label className="mut" style={{ fontSize: 12, display: "flex", gap: 5, alignItems: "center" }}>Pause <TimeField value={d.pauseStart || ""} onChange={(v) => set("pauseStart", v || null)} disabled={!d.worked} aria-label="Début de pause" /> → <TimeField value={d.pauseEnd || ""} onChange={(v) => set("pauseEnd", v || null)} disabled={!d.worked} aria-label="Fin de pause" /></label>
+      <span className="dayedit-times">
+        <label><span>Début</span><TimeField value={d.start || ""} onChange={(v) => set("start", v)} disabled={!d.worked} /></label>
+        <label><span>Début de pause</span><TimeField value={d.pauseStart || ""} onChange={(v) => set("pauseStart", v || null)} disabled={!d.worked} /></label>
+        <label><span>Fin de pause</span><TimeField value={d.pauseEnd || ""} onChange={(v) => set("pauseEnd", v || null)} disabled={!d.worked} /></label>
+        <label><span>Fin</span><TimeField value={d.end || ""} onChange={(v) => set("end", v)} disabled={!d.worked} /></label>
+      </span>
       <label><input type="checkbox" checked={d.open} onChange={(e) => set("open", e.target.checked)} disabled={!d.worked} /> Ouverture</label>
       <label><input type="checkbox" checked={d.close} onChange={(e) => set("close", e.target.checked)} disabled={!d.worked} /> Fermeture</label>
       <button className="btn" onClick={save}>Enregistrer</button>
