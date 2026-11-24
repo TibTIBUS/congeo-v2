@@ -11,14 +11,14 @@ describe("semaines ISO", () => {
     expect(isoWeeksInYear(2027)).toBe(52);
     expect(isoWeeksInYear(2028)).toBe(52);
   });
-  it("le 8 mars 2027 est en semaine 10 (paire)", () => {
+  it("le 8 mars 2027 est en semaine ISO 10 et modele B", () => {
     const iso = isoWeek(parseISO("2027-03-08"));
     expect(iso).toEqual({ year: 2027, week: 10 });
-    expect(parityOf(iso)).toBe("paire");
+    expect(parityOf(iso)).toBe("impaire");
   });
-  it("parite au changement d'annee : S53-2026 et S1-2027 sont impaires toutes deux", () => {
+  it("alternance au changement d'annee : S53-2026 B puis S1-2027 A", () => {
     expect(parityOf({ year: 2026, week: 53 })).toBe("impaire");
-    expect(parityOf({ year: 2027, week: 1 })).toBe("impaire");
+    expect(parityOf({ year: 2027, week: 1 })).toBe("paire");
   });
   it("S53-2026 existe : 28 dec 2026 - 3 jan 2027", () => {
     expect(isoWeek(parseISO("2026-12-28"))).toEqual({ year: 2026, week: 53 });
