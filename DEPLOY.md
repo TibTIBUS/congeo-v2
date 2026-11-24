@@ -7,7 +7,7 @@ L'interface est publiée sur GitHub Pages à chaque push validé sur main, aprè
 - API : URL publique dans public/config.js, Neon Function congeov2 sur le projet proud-river-20239760, branche br-solitary-union-ba4ax9oj, Francfort.
 - La V1 reste sur son dépôt et son projet Neon distincts.
 
-Node 24 : npm ci, npm test, npm run build, npm run build:function. Déployer dist-function/index.mjs comme index.mjs dans l'archive de la Neon Function. Les variables d'environnement omises sont conservées.
+Node 24 : npm ci, npm test, npm run build, npm run build:function. Le dossier dist-function est genere et ignore par Git : aucun bundle precompile ne doit etre repris depuis le depot ou une ancienne archive. Toujours reconstruire depuis le commit courant, puis deployer dist-function/index.mjs comme index.mjs dans l'archive de la Neon Function. Cette reconstruction inclut le calcul A/B continu a partir du 4 janvier 2027 et preserve la regle historique avant cette date. Les variables d'environnement omises sont conservees.
 
 Le schéma schema.sql est appliqué avant les premières requêtes de chaque instance. Les migrations préservent les identifiants et les enregistrements existants ; tester les évolutions sur une branche isolée avant la branche principale.
 
