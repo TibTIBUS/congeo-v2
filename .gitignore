@@ -6,3 +6,6 @@ server/data/
 
 .env*
 !.env.example
+
+# Toujours reconstruire le serveur depuis les sources (correctif A/B 2027).
+dist-function/
