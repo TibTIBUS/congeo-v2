@@ -69,7 +69,7 @@ describe("serveur, accès modèle V1 (sans connexion)", () => {
     expect([a.code, b.code].sort()).toEqual([200, 200]);
     expect(a.body.idempotent || b.body.idempotent).toBe(true);
     const bal = await api("/api/recovery/hugo");
-    expect(bal.body.balanceMin).toBe(14 * 60 - 510); // 14 h - 8 h 30, une seule fois
+    expect(bal.body.balanceMin).toBe(14 * 60 - 480); // 14 h - 8 h (modele B en mars 2027), une seule fois
   });
   it("validation bloquée si solde insuffisant, sans écriture", async () => {
     const req = await api("/api/requests", { method: "POST", body: { type: "recovery", dates: ["2027-03-16"], employeeId: "hugo" } });
@@ -77,7 +77,7 @@ describe("serveur, accès modèle V1 (sans connexion)", () => {
     const v = await api(`/api/requests/${req.body.request.id}/validate`, { method: "POST" });
     expect(v.code).toBe(409);
     const bal = await api("/api/recovery/hugo");
-    expect(bal.body.balanceMin).toBe(14 * 60 - 510); // inchangé
+    expect(bal.body.balanceMin).toBe(14 * 60 - 480); // inchangé
     const mine = await api("/api/requests?employee=hugo");
     expect(mine.body.requests.find((r) => r.id === req.body.request.id).status).toBe("pending");
   });
@@ -102,7 +102,7 @@ describe("serveur, accès modèle V1 (sans connexion)", () => {
     expect((await api("/api/recovery", { method: "POST", body: { employeeId: "hugo", deltaMin: -60 } })).code).toBe(400);
     expect((await api("/api/recovery", { method: "POST", body: { employeeId: "hugo", deltaMin: 60, reason: "test" } })).code).toBe(201);
     const bal = (await api("/api/recovery/hugo")).body;
-    expect(bal.balanceMin).toBe(14 * 60 - 510 + 60);
+    expect(bal.balanceMin).toBe(14 * 60 - 480 + 60);
   });
   it("export annuel : semaines ISO des congés validés", async () => {
     const x = (await api("/api/export?year=2027")).body;
