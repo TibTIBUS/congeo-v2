@@ -1,5 +1,4 @@
-// Dates et semaines ISO-8601. La parite du numero de semaine ISO fait foi,
-// y compris au changement d'annee (S53 et S1 peuvent etre toutes deux impaires).
+// Dates et numeros de semaines ISO-8601. L'alternance A/B est definie ci-dessous.
 export const DAY_NAMES = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 export const DAY_NAMES_LONG = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -44,7 +43,16 @@ export function weekDates(year, week) {
   const mon = mondayOfISOWeek(year, week);
   return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
 }
-export function parityOf(iso) { return iso.week % 2 === 0 ? "paire" : "impaire"; }
+// A partir du lundi 4 janvier 2027, A/B est une alternance continue.
+// Les cles historiques paire/impaire restent celles des modeles A/B.
+// Avant cette date, conserver exactement la regle historique.
+export function parityOf(iso) {
+  if (iso.year < 2027) return iso.week % 2 === 0 ? "paire" : "impaire";
+  const monday = mondayOfISOWeek(iso.year, iso.week);
+  const utc = Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate());
+  const elapsedWeeks = Math.round((utc - Date.UTC(2027, 0, 4)) / (7 * 86400000));
+  return elapsedWeeks % 2 === 0 ? "paire" : "impaire";
+}
 export function dayLabel(date) { return `${DAY_NAMES[(date.getDay() + 6) % 7]} ${date.getDate()}`; }
 const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 export function fmtDate(date) { return `${date.getDate()} ${MOIS[date.getMonth()]}`; }
