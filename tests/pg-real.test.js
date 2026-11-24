@@ -73,7 +73,7 @@ afterAll(async () => {
   }, 30000);
   it('replacement choices persist atomically; concurrent stale choices roll back; cancellation removes assignments',async()=>{
     const d=await store.getDoc(),employee=d.employees[0],backup=d.employees[1],day='2027-02-16';
-    await store.transact(db=>{db.blocks=[];db.settings.blocksConfigured='true';db.settings.firstWeek='false';db.templates[employee.id].impaire[1].open=true;db.templates[backup.id].impaire[1]={worked:true,start:'09:00',end:'19:00',pauseStart:null,pauseEnd:null,open:false,close:false};db.settings.dutyBackups=JSON.stringify({[backup.id]:{impaire:{1:{open:true,close:false}}}});changePlanning(db,{admin:true,action:'request',target:employee.id,start:day,end:day,leaveType:'leave'});});
+    await store.transact(db=>{db.blocks=[];db.settings.blocksConfigured='true';db.settings.firstWeek='false';db.templates[employee.id].paire[1].open=true;db.templates[backup.id].paire[1]={worked:true,start:'09:00',end:'19:00',pauseStart:null,pauseEnd:null,open:false,close:false};db.settings.dutyBackups=JSON.stringify({[backup.id]:{paire:{1:{open:true,close:false}}}});changePlanning(db,{admin:true,action:'request',target:employee.id,start:day,end:day,leaveType:'leave'});});
     const current=await store.getDoc(),r=current.requests.find(x=>x.employeeId===employee.id&&x.dateStart===day),proposal=replacementProposal(current,r),review={version:proposal.version,choices:[{day,role:'open',employeeId:backup.id}]};
     expect(proposal.rows).toHaveLength(1);
     const store2=await createPgStore(client2,{seedIfEmpty:false,schemaName:schema});
